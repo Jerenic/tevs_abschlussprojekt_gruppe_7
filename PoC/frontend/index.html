@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <title>Status Server – PoC</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+
+    header {
+      background: #1e293b;
+      padding: 1.25rem 2rem;
+      border-bottom: 1px solid #334155;
+    }
+    header h1 { font-size: 1.4rem; color: #38bdf8; }
+    header p  { font-size: 0.85rem; color: #94a3b8; margin-top: 0.25rem; }
+
+    main { padding: 1.5rem 2rem; display: grid; gap: 1.5rem; }
+
+    /* ── Form ── */
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 0.75rem;
+      padding: 1.25rem 1.5rem;
+    }
+    .card h2 { font-size: 1rem; color: #7dd3fc; margin-bottom: 1rem; }
+
+    form { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-end; }
+    label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.8rem; color: #94a3b8; }
+    input[type=text], input[type=number] {
+      background: #0f172a;
+      border: 1px solid #475569;
+      border-radius: 0.4rem;
+      color: #e2e8f0;
+      padding: 0.45rem 0.65rem;
+      font-size: 0.9rem;
+      width: 160px;
+    }
+    input:focus { outline: 2px solid #38bdf8; border-color: transparent; }
+    button {
+      background: #0ea5e9;
+      color: #fff;
+      border: none;
+      border-radius: 0.4rem;
+      padding: 0.5rem 1.1rem;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    button:hover { background: #0284c7; }
+    button.secondary { background: #334155; }
+    button.secondary:hover { background: #475569; }
+
+    #submit-msg {
+      margin-top: 0.75rem;
+      font-size: 0.85rem;
+      min-height: 1.2em;
+    }
+    #submit-msg.ok  { color: #4ade80; }
+    #submit-msg.err { color: #f87171; }
+
+    /* ── Nodes side-by-side ── */
+    .nodes-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+
+    .node-card { background: #1e293b; border: 1px solid #334155; border-radius: 0.75rem; padding: 1.25rem 1.5rem; }
+    .node-header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
+    .node-header h2 { font-size: 1rem; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: #475569; flex-shrink: 0; }
+    .dot.online  { background: #4ade80; box-shadow: 0 0 6px #4ade80; }
+    .dot.offline { background: #f87171; }
+
+    .status-list { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.75rem; }
+    .status-item {
+      background: #0f172a;
+      border: 1px solid #1e3a5f;
+      border-radius: 0.5rem;
+      padding: 0.65rem 0.85rem;
+      font-size: 0.82rem;
+    }
+    .status-item .uname { font-weight: 700; color: #38bdf8; }
+    .status-item .text  { color: #cbd5e1; margin: 0.2rem 0; }
+    .status-item .meta  { color: #64748b; font-size: 0.75rem; }
+    .empty { color: #475569; font-size: 0.85rem; margin-top: 0.5rem; }
+
+    /* ── Replication arrow hint ── */
+    .arrow-hint {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #475569;
+      font-size: 0.8rem;
+      gap: 0.5rem;
+    }
+    .arrow-hint span { font-size: 1.5rem; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Status Server – Proof of Concept</h1>
+  <p>Client → Node A (5001) → Replikation → Node B (5002)</p>
+</header>
+
+<main>
+
+  <!-- Submit form -->
+  <div class="card">
+    <h2>Status senden (an Node A)</h2>
+    <form id="status-form">
+      <label>Username
+        <input type="text" id="username" placeholder="z.B. RECON-01" required />
+      </label>
+      <label>Statustext
+        <input type="text" id="statustext" placeholder="z.B. Am Weg zum Einsatz" required />
+      </label>
+      <label>Latitude
+        <input type="number" id="latitude" placeholder="48.2150" step="any" value="48.2150" />
+      </label>
+      <label>Longitude
+        <input type="number" id="longitude" placeholder="16.3850" step="any" value="16.3850" />
+      </label>
+      <button type="submit">Senden</button>
+    </form>
+    <p id="submit-msg"></p>
+  </div>
+
+  <!-- Nodes -->
+  <div class="nodes-grid">
+
+    <div class="node-card">
+      <div class="node-header">
+        <div class="dot" id="dot-a"></div>
+        <h2>Node A &nbsp;<small style="color:#64748b;font-weight:400">:5001</small></h2>
+        <button class="secondary" style="margin-left:auto" onclick="loadNode('a')">&#x21bb; Aktualisieren</button>
+      </div>
+      <div id="list-a"><span class="empty">–</span></div>
+    </div>
+
+    <div class="node-card">
+      <div class="node-header">
+        <div class="dot" id="dot-b"></div>
+        <h2>Node B &nbsp;<small style="color:#64748b;font-weight:400">:5002</small></h2>
+        <button class="secondary" style="margin-left:auto" onclick="loadNode('b')">&#x21bb; Aktualisieren</button>
+      </div>
+      <div id="list-b"><span class="empty">–</span></div>
+    </div>
+
+  </div>
+
+</main>
+
+<script>
+  const NODES = { a: 'http://localhost:5001', b: 'http://localhost:5002' };
+
+  // ── Health check ──────────────────────────────────────────────
+  async function checkHealth(node) {
+    const dot = document.getElementById(`dot-${node}`);
+    try {
+      const res = await fetch(`${NODES[node]}/health`, { signal: AbortSignal.timeout(1500) });
+      dot.className = res.ok ? 'dot online' : 'dot offline';
+    } catch {
+      dot.className = 'dot offline';
+    }
+  }
+
+  // ── Load & render statuses ────────────────────────────────────
+  async function loadNode(node) {
+    await checkHealth(node);
+    const container = document.getElementById(`list-${node}`);
+    try {
+      const res = await fetch(`${NODES[node]}/status`, { signal: AbortSignal.timeout(2000) });
+      const data = await res.json();
+      if (!data.length) { container.innerHTML = '<span class="empty">Keine Einträge</span>'; return; }
+      container.innerHTML = '<div class="status-list">' +
+        data.map(s => `
+          <div class="status-item">
+            <div class="uname">${esc(s.username)}</div>
+            <div class="text">${esc(s.statustext)}</div>
+            <div class="meta">
+              ${s.latitude ?? '–'}, ${s.longitude ?? '–'} &nbsp;|&nbsp;
+              ${s.uhrzeit ? s.uhrzeit.replace('T', ' ').slice(0, 19) : '–'}
+            </div>
+          </div>`).join('') +
+        '</div>';
+    } catch {
+      container.innerHTML = '<span class="empty" style="color:#f87171">Node nicht erreichbar</span>';
+    }
+  }
+
+  // ── Submit form ───────────────────────────────────────────────
+  document.getElementById('status-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('submit-msg');
+    const payload = {
+      username:   document.getElementById('username').value.trim(),
+      statustext: document.getElementById('statustext').value.trim(),
+      latitude:   parseFloat(document.getElementById('latitude').value) || null,
+      longitude:  parseFloat(document.getElementById('longitude').value) || null,
+    };
+    try {
+      const res = await fetch(`${NODES.a}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        msg.textContent = `Gespeichert & an Node B repliziert.`;
+        msg.className = 'ok';
+        // Beide Nodes nach kurzer Verzögerung neu laden
+        setTimeout(() => { loadNode('a'); loadNode('b'); }, 300);
+      } else {
+        msg.textContent = json.error ?? 'Fehler';
+        msg.className = 'err';
+      }
+    } catch {
+      msg.textContent = 'Node A nicht erreichbar.';
+      msg.className = 'err';
+    }
+  });
+
+  function esc(str) {
+    return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // ── Initial load ──────────────────────────────────────────────
+  loadNode('a');
+  loadNode('b');
+</script>
+</body>
+</html>
