@@ -71,4 +71,4 @@ if __name__ == '__main__':
     PEER_URL = sys.argv[2] if len(sys.argv) > 2 else None
     NODE_NAME = sys.argv[3] if len(sys.argv) > 3 else f"Node-{port}"
     print(f"[{NODE_NAME}] Starte auf Port {port} | Peer: {PEER_URL or 'keiner'}")
-    app.run(port=port, debug=False)
+    app.run(host='0.0.0.0', port=port, debug=False)

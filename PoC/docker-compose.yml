@@ -1,0 +1,22 @@
+services:
+
+  node-b:
+    build: ./backend
+    ports:
+      - "5002:5002"
+    command: ["5002", "", "Node-B"]
+
+  node-a:
+    build: ./backend
+    ports:
+      - "5001:5001"
+    command: ["5001", "http://node-b:5002", "Node-A"]
+    depends_on:
+      - node-b
+
+  frontend:
+    image: nginx:alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
