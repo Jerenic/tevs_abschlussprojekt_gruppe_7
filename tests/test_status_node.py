@@ -1,9 +1,10 @@
 import os
+import shutil
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
+from uuid import uuid4
 
 BACKEND_DIR = Path(__file__).resolve().parents[1] / "backend"
 sys.path.insert(0, str(BACKEND_DIR))
@@ -202,21 +203,21 @@ class TombstoneTest(unittest.TestCase):
 
 class PersistenceTest(unittest.TestCase):
     def setUp(self):
-        self.tmpdir = tempfile.mkdtemp()
-        self.db_path = os.path.join(self.tmpdir, "status.db")
+        self.old_journal_mode = os.environ.get("SQLITE_JOURNAL_MODE")
+        os.environ["SQLITE_JOURNAL_MODE"] = "MEMORY"
+        self.tmpdir = Path(__file__).resolve().parents[1] / ".test-tmp" / uuid4().hex
+        self.tmpdir.mkdir(parents=True, exist_ok=True)
+        self.db_path = str(self.tmpdir / "status.db")
         reset_node(self.db_path)
         self.client = app_module.app.test_client()
 
     def tearDown(self):
         reset_node()  # close file-backed connection, switch back to in-memory
-        try:
-            os.remove(self.db_path)
-        except OSError:
-            pass
-        try:
-            os.rmdir(self.tmpdir)
-        except OSError:
-            pass
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+        if self.old_journal_mode is None:
+            os.environ.pop("SQLITE_JOURNAL_MODE", None)
+        else:
+            os.environ["SQLITE_JOURNAL_MODE"] = self.old_journal_mode
 
     def test_status_survives_reopen(self):
         self.client.post("/status", json={

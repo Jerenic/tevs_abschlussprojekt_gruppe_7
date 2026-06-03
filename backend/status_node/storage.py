@@ -61,6 +61,12 @@ def init_db(path: str) -> None:
             os.makedirs(parent, exist_ok=True)
         _conn = sqlite3.connect(path, check_same_thread=False)
         _conn.row_factory = sqlite3.Row
+        journal_mode = os.getenv("SQLITE_JOURNAL_MODE", "").strip().upper()
+        if journal_mode:
+            allowed_modes = {"DELETE", "TRUNCATE", "PERSIST", "MEMORY", "WAL", "OFF"}
+            if journal_mode not in allowed_modes:
+                raise ValueError(f"Unsupported SQLite journal mode: {journal_mode}")
+            _conn.execute(f"PRAGMA journal_mode={journal_mode}")
         _conn.execute(_CREATE_TABLE_SQL)
         _conn.commit()
         _load_cache_locked()
