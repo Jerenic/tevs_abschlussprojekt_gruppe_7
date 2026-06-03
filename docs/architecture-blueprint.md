@@ -25,10 +25,23 @@ Der Browser ruft nur den Loadbalancer auf. Das Frontend wird direkt vom Loadbala
 | Komponente | Technologie | Aufgabe |
 |---|---|---|
 | Loadbalancer | NGINX | Zentrale URL, statisches Frontend, Proxy und Failover auf Backend-Nodes |
-| StatusNode A/B/C | Python + Flask | CRUD-API, SQLite-Persistenz, Peer-Replikation, Bootstrap, Retry |
+| StatusNode A/B/C | Python + Flask (`backend/status_node/`) | CRUD-API, SQLite-Persistenz, Peer-Replikation, Bootstrap, Retry |
 | Persistenz | SQLite (pro Node) | Lokaler, dauerhafter Speicher je Node, kein Shared-DB |
-| Frontend | HTML + JavaScript | Status erfassen, Feed anzeigen, Delete ausloesen (Demo) |
+| Frontend | HTML + JavaScript (`frontend/index.html`) | Status erfassen, Feed anzeigen, Delete ausloesen (Demo) |
 | Docker Compose | Docker | Gemeinsames Netzwerk, Healthchecks, Volumes, Service-Start |
+
+### Backend-Module (`backend/status_node/`)
+
+Die StatusNode ist in fachliche Module aufgeteilt, damit Replikation, Persistenz und Bootstrapping getrennt erklaerbar und testbar sind:
+
+| Modul | Verantwortung |
+|---|---|
+| `app.py` | Flask-App, Routes, Start-Einstiegspunkt (`python -m status_node.app`) |
+| `config.py` | Laufzeitkonfiguration aus Env/CLI (Port, Peers, DB-Pfad, Intervalle) |
+| `models.py` | Validierung, Zeitstempel-Parsing, Last-Writer-Wins-Vergleich |
+| `storage.py` | SQLite-Verbindung, Persistenz und In-Memory-Lesecache |
+| `replication.py` | Peer-Replikation, Pending-Queue, Retry-Worker |
+| `bootstrap.py` | Snapshot-Abruf, Initial-Sync, Grace-Period-Status |
 
 ## Kommunikationswege
 

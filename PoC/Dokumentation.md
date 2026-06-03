@@ -1,6 +1,10 @@
-# Dokumentation - Loadbalanced Status Server PoC
+# Dokumentation - Loadbalanced Status Server (historische PoC-Notiz)
 
-Der aktuelle PoC ist auf Aufgabe 3 ausgerichtet. Statt zwei direkt erreichbaren Nodes gibt es jetzt drei Statusnodes hinter einem NGINX Loadbalancer. Nutzer greifen nur noch ueber `http://localhost:8888` auf das System zu.
+> Hinweis: Der produktive Code liegt inzwischen unter `backend/status_node/` und
+> `frontend/`. Diese Notiz beschreibt den Architektur- und Ablaufstand, der aus dem
+> PoC hervorgegangen ist.
+
+Statt zwei direkt erreichbaren Nodes gibt es drei Statusnodes hinter einem NGINX Loadbalancer. Nutzer greifen nur noch ueber `http://localhost:8888` auf das System zu.
 
 ## Architektur
 

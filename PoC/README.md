@@ -1,28 +1,20 @@
-# Status Server PoC
+# Status Server PoC (historisch)
 
-Der urspruengliche PoC wurde fuer Aufgabe 3 erweitert. Das Frontend spricht die Statusnodes nicht mehr direkt ueber einzelne Host-Ports an, sondern nutzt den zentralen Loadbalancer.
+> Hinweis: Dieser Ordner dokumentiert nur noch den urspruenglichen Proof of Concept.
+> Der produktive Code liegt inzwischen unter `backend/` (Statusnode-Paket) und
+> `frontend/` (Demo-Frontend). Gestartet wird das System ausschliesslich ueber das
+> Repository-Root mit `docker compose up --build`.
 
-## Start
+## Was hier dokumentiert ist
 
-Vom Repository-Root aus starten:
+Der PoC zeigte urspruenglich die Grundidee: ein Client sendet einen Status an eine
+Node, die ihn lokal speichert und an eine zweite Node repliziert. Daraus wurde das
+verteilte Commandcenter mit drei replizierenden Statusnodes hinter einem NGINX
+Loadbalancer.
 
-```bash
-docker compose up --build
-```
+## Aktuelle Einstiegspunkte
 
-Danach ist die Anwendung erreichbar unter:
-
-```text
-http://localhost:8888
-```
-
-## Komponenten
-
-- `backend/node.py`: Flask StatusNode mit SQLite-Persistenz, Peer-Replikation, Initial-Sync und Retry-Queue
-- `frontend/index.html`: statisches Frontend mit relativen `/api/...` Requests
-- `../loadbalancer/nginx.conf`: NGINX Loadbalancer vor den Statusnodes
-- `../docker-compose.yml`: Startet `node-a`, `node-b`, `node-c` und den Loadbalancer
-
-## Hinweis
-
-Direkter Zugriff auf einzelne Nodes ueber `localhost:5001` oder `localhost:5002` ist im aktuellen Aufgabe-3-Stand nicht mehr vorgesehen. Die zentrale URL ist der Loadbalancer.
+- Anwendung starten: `docker compose up --build` (Root), danach `http://localhost:8888`
+- Backend-Code: `backend/status_node/`
+- Frontend: `frontend/index.html`
+- Architektur und Details: `docs/architecture-blueprint.md`

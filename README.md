@@ -22,6 +22,30 @@ Browser  ->  NGINX Loadbalancer (:8888)  ->  node-a / node-b / node-c (Flask :50
                      '-> liefert statisches Frontend
 ```
 
+## Projektstruktur
+
+```text
+backend/
+  status_node/        Flask StatusNode als Python-Paket
+    app.py            Flask-App, Routes, Einstiegspunkt (python -m status_node.app)
+    config.py         Env-/CLI-Konfiguration (Port, Peers, DB-Pfad, Intervalle)
+    models.py         Validierung, Zeitstempel, Last-Writer-Wins-Vergleich
+    storage.py        SQLite-Persistenz und In-Memory-Lesecache
+    replication.py    Peer-Replikation, Pending-Queue, Retry-Worker
+    bootstrap.py      Snapshot-Abruf, Initial-Sync, Grace-Period-Status
+  requirements.txt
+frontend/
+  index.html          statisches Demo-Frontend (nur /api/...)
+loadbalancer/
+  nginx.conf
+tests/
+docs/
+Dockerfile
+docker-compose.yml
+```
+
+Der produktive Code liegt unter `backend/`. Der frühere `PoC/`-Ordner enthält nur noch historische Notizen und wird nicht mehr gestartet.
+
 ### Replikation
 
 Eine Node, die einen Client-Schreibzugriff (`POST`/`DELETE`) erhaelt, speichert lokal und schickt das Statusobjekt per `POST /replicate` an ihre Peers. Empfangende Nodes validieren das Update und uebernehmen es nur, wenn es gewinnt (siehe Konfliktaufloesung). Es wird keine externe Replikationsbibliothek verwendet, die Logik liegt vollstaendig in `node.py`.
@@ -58,6 +82,16 @@ curl http://localhost:8888/lb-health
 
 Der Loadbalancer-Port ist optional ueber `.env` (`LOADBALANCER_PORT`) konfigurierbar.
 
+### Eine Node lokal ohne Docker starten
+
+```bash
+pip install -r backend/requirements.txt
+cd backend
+python -m status_node.app 5000 "" Node-A node-a.db
+```
+
+Die Argumente sind optional: `Port`, `Peers` (kommagetrennt), `NodeName`, `DB-Pfad`. Alternativ koennen `PORT`, `PEERS`, `NODE_NAME` und `DB_PATH` als Umgebungsvariablen gesetzt werden.
+
 ## Aufgabe-3-Demo
 
 1. `docker compose up --build` starten.
@@ -83,8 +117,9 @@ Die Suite deckt CRUD, Validierung, Last-Writer-Wins (inkl. Tiebreak), Tombstones
 | `Dockerfile` | Image fuer eine Statusnode |
 | `docker-compose.yml` | Drei Nodes plus Loadbalancer, Volumes pro Node |
 | `loadbalancer/nginx.conf` | NGINX Upstream, Routing und Failover |
-| `PoC/backend/node.py` | Flask StatusNode (CRUD, Replikation, Persistenz, Bootstrap, Retry) |
-| `PoC/frontend/index.html` | Statisches Demo-Frontend (spricht nur `/api/...`) |
+| `backend/status_node/` | Flask StatusNode in Modulen (siehe unten) |
+| `backend/requirements.txt` | Python-Abhaengigkeiten der Statusnode |
+| `frontend/index.html` | Statisches Demo-Frontend (spricht nur `/api/...`) |
 | `tests/test_status_node.py` | Unit- und Verhaltenstests |
 | `docs/architecture-blueprint.md` | Architektur-Blueprint |
 | `docs/aufgabe-3-loadbalancer.md` | Aufgabe-3-Dokumentation |
