@@ -1,0 +1,28 @@
+# Git / IDE
+.git
+.gitignore
+.idea
+.vscode
+
+# Python-Cache
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv
+venv
+env
+
+# Lokale Secrets nicht ins Image-Kontext-Verzeichnis mischen (Compose liest .env vom Host)
+.env
+
+# Nicht benötigt für das Backend-Image
+node_modules
+*.zip
+PoC/backend/__pycache__
+
+# Große, für den Build irrelevante Ordner
+Context_aus_der_Vorlesung
+Aufgaben
+assets

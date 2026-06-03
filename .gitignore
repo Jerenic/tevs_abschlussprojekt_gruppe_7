@@ -1,0 +1,22 @@
+.env
+.idea/
+.vscode/
+__pycache__/
+*.py[cod]
+*.pyc.*
+.pytest_cache/
+.venv/
+venv/
+env/
+node_modules/
+*.zip
+
+# Lokale SQLite-Datenbanken der Nodes (Persistenz liegt in Docker-Volumes)
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# OS-Artefakte
+.DS_Store
+Thumbs.db
