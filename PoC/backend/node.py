@@ -5,6 +5,7 @@ import os
 import sqlite3
 import sys
 import threading
+import time
 from typing import Any
 
 import requests
@@ -19,6 +20,13 @@ CORS(app)
 statuses: dict[str, dict[str, Any]] = {}
 PEER_URLS: list[str] = []
 NODE_NAME = "Node"
+
+# Bootstrap / grace-period state. A freshly started node first pulls a snapshot
+# from its peers before it answers client traffic. Defaults to ready so that
+# imports and unit tests are not gated; the __main__ entrypoint flips it.
+READY = True
+NODE_STATE = "ready"
+BOOTSTRAP_TIMEOUT = float(os.environ.get("BOOTSTRAP_TIMEOUT", "8"))
 
 # SQLite persistence. Each node owns its own local database file (no shared DB).
 DB_PATH = ":memory:"
@@ -208,6 +216,73 @@ def visible_statuses() -> list[dict[str, Any]]:
     return [status for status in statuses.values() if not status.get("deleted", False)]
 
 
+def fetch_snapshot(peer_url: str, timeout: float = 3.0) -> list[dict[str, Any]] | None:
+    """Pull a peer's full snapshot (including tombstones). None on failure."""
+    try:
+        response = requests.get(f"{peer_url}/internal/snapshot", timeout=timeout)
+        if not response.ok:
+            return None
+        data = response.json()
+        return data.get("statuses", []) if isinstance(data, dict) else []
+    except (requests.RequestException, ValueError):
+        return None
+
+
+def bootstrap_from_peers(peers: list[str] | None = None, timeout: float | None = None) -> int:
+    """Initial sync: merge peer snapshots into the local store using LWW.
+
+    Tries each peer until it answers or the timeout elapses. Returns the number
+    of applied (won) status objects. Unreachable peers are simply skipped, so a
+    first node without reachable peers proceeds with its own (persisted) data.
+    """
+    peers = PEER_URLS if peers is None else peers
+    timeout = BOOTSTRAP_TIMEOUT if timeout is None else timeout
+    if not peers:
+        return 0
+
+    deadline = time.monotonic() + timeout
+    outstanding = set(peers)
+    applied = 0
+
+    while outstanding and time.monotonic() < deadline:
+        for peer in list(outstanding):
+            snapshot_data = fetch_snapshot(peer)
+            if snapshot_data is None:
+                continue
+            for raw in snapshot_data:
+                normalized, error = normalize_status(raw, allow_deleted=True)
+                if error:
+                    continue
+                if apply_status(normalized):
+                    applied += 1
+            outstanding.discard(peer)
+        if outstanding:
+            time.sleep(0.5)
+
+    return applied
+
+
+def run_bootstrap() -> None:
+    """Run the grace period: gate client traffic until the initial sync is done."""
+    global READY, NODE_STATE
+    READY = False
+    NODE_STATE = "bootstrapping"
+    try:
+        count = bootstrap_from_peers()
+        print(f"[{NODE_NAME}] Bootstrap abgeschlossen: {count} Status uebernommen")
+    finally:
+        READY = True
+        NODE_STATE = "ready"
+
+
+def _not_ready_response():
+    return jsonify({
+        "error": "Node befindet sich im Bootstrap (Grace Period)",
+        "node": NODE_NAME,
+        "state": NODE_STATE,
+    }), 503
+
+
 @app.after_request
 def add_node_header(response):
     response.headers["X-Status-Node"] = NODE_NAME
@@ -216,6 +291,8 @@ def add_node_header(response):
 
 @app.route("/status", methods=["POST"])
 def post_status():
+    if not READY:
+        return _not_ready_response()
     status, error = normalize_status(request.get_json(silent=True), allow_deleted=False)
     if error:
         return jsonify({"error": error, "node": NODE_NAME}), 400
@@ -246,11 +323,15 @@ def replicate():
 
 @app.route("/status", methods=["GET"])
 def get_all():
+    if not READY:
+        return _not_ready_response()
     return jsonify(visible_statuses()), 200
 
 
 @app.route("/status/<username>", methods=["GET"])
 def get_one(username):
+    if not READY:
+        return _not_ready_response()
     status = statuses.get(username)
     if not status or status.get("deleted", False):
         return jsonify({"error": "Nicht gefunden", "node": NODE_NAME}), 404
@@ -259,6 +340,8 @@ def get_one(username):
 
 @app.route("/status/<username>", methods=["DELETE"])
 def delete_one(username):
+    if not READY:
+        return _not_ready_response()
     tombstone = {
         "username": username.strip(),
         "statustext": "",
@@ -290,9 +373,12 @@ def snapshot():
 
 @app.route("/health", methods=["GET"])
 def health():
+    # Always 200 for container liveness; `ready`/`state` show grace-period status.
     return jsonify({
         "node": NODE_NAME,
         "status": "ok",
+        "ready": READY,
+        "state": NODE_STATE,
         "entries": len(visible_statuses()),
         "storedObjects": len(statuses),
         "peers": PEER_URLS,
@@ -321,4 +407,9 @@ if __name__ == "__main__":
 
     init_db(db_path)
     print(f"[{NODE_NAME}] Starte auf Port {port} | Peers: {PEER_URLS or 'keine'} | DB: {db_path}")
+
+    # Bootstrap runs in the background so /replicate, /internal/snapshot and
+    # /health stay reachable for peers while client endpoints are gated.
+    threading.Thread(target=run_bootstrap, daemon=True).start()
+
     app.run(host="0.0.0.0", port=port, debug=False, threaded=True)
