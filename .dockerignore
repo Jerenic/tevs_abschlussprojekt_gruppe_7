@@ -20,9 +20,15 @@ env
 # Nicht benötigt für das Backend-Image
 node_modules
 *.zip
-PoC/backend/__pycache__
+**/__pycache__
+*.db
+*.sqlite
+*.sqlite3
 
 # Große, für den Build irrelevante Ordner
 Context_aus_der_Vorlesung
 Aufgaben
 assets
+docs
+tests
+PoC

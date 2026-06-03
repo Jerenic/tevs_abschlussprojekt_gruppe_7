@@ -89,7 +89,7 @@ services:
       - "${LOADBALANCER_PORT:-8888}:80"
     volumes:
       - ./loadbalancer/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./PoC/frontend:/usr/share/nginx/html:ro
+      - ./frontend:/usr/share/nginx/html:ro
     depends_on:
       node-a:
         condition: service_healthy
