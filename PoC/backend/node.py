@@ -59,7 +59,7 @@ def _status_from_row(row: sqlite3.Row) -> dict[str, Any]:
 
 
 def _load_cache_locked() -> None:
-    """Refill the in-memory cache from the database. Caller holds _db_lock."""
+    # Caller must hold _db_lock.
     statuses.clear()
     assert _conn is not None
     for row in _conn.execute("SELECT * FROM statuses"):
@@ -68,11 +68,7 @@ def _load_cache_locked() -> None:
 
 
 def init_db(path: str) -> None:
-    """(Re)open the SQLite database, ensure the schema and reload the cache.
-
-    Called once at startup with the configured DB_PATH and by tests to get a
-    clean, isolated store (e.g. ":memory:" or a temp file).
-    """
+    # Re-opening yields a clean, isolated store, which the tests rely on.
     global _conn, DB_PATH
     with _db_lock:
         if _conn is not None:
@@ -89,7 +85,6 @@ def init_db(path: str) -> None:
 
 
 def _persist(status: dict[str, Any]) -> None:
-    """Upsert a single status (or tombstone) into SQLite."""
     with _db_lock:
         if _conn is None:
             return
@@ -193,7 +188,6 @@ def should_apply(incoming: dict[str, Any]) -> bool:
 
 
 def apply_status(status: dict[str, Any]) -> bool:
-    """Apply a status if it wins LWW, updating both cache and SQLite."""
     if not should_apply(status):
         return False
     statuses[status["username"]] = status
@@ -217,7 +211,7 @@ def visible_statuses() -> list[dict[str, Any]]:
 
 
 def fetch_snapshot(peer_url: str, timeout: float = 3.0) -> list[dict[str, Any]] | None:
-    """Pull a peer's full snapshot (including tombstones). None on failure."""
+    # Snapshot includes tombstones so replicated deletes survive the initial sync.
     try:
         response = requests.get(f"{peer_url}/internal/snapshot", timeout=timeout)
         if not response.ok:
