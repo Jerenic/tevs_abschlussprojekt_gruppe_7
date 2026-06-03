@@ -1,7 +1,7 @@
 import os
 import sys
-import tempfile
 import unittest
+import uuid
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -201,7 +201,10 @@ class TombstoneTest(unittest.TestCase):
 
 class PersistenceTest(unittest.TestCase):
     def setUp(self):
-        self.tmpdir = tempfile.mkdtemp()
+        test_tmp_root = Path(__file__).resolve().parents[1] / ".test-tmp"
+        test_tmp_root.mkdir(exist_ok=True)
+        self.tmpdir = str(test_tmp_root / str(uuid.uuid4()))
+        os.makedirs(self.tmpdir, exist_ok=False)
         self.db_path = os.path.join(self.tmpdir, "status.db")
         reset_node(self.db_path)
         self.client = node.app.test_client()
