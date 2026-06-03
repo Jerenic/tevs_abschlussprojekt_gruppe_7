@@ -1,61 +1,28 @@
-# Status Server – Proof of Concept
+# Status Server PoC
 
-Demonstriert die Grundidee: Client sendet einen Status an **Node A**, Node A speichert ihn lokal und leitet ihn per REST an **Node B** weiter.
+Der urspruengliche PoC wurde fuer Aufgabe 3 erweitert. Das Frontend spricht die Statusnodes nicht mehr direkt ueber einzelne Host-Ports an, sondern nutzt den zentralen Loadbalancer.
 
-```
-Client → POST /status → Node A (5001)
-                              └─ POST /replicate → Node B (5002)
-```
+## Start
 
-## Starten
-
-### 1. Abhängigkeiten installieren
+Vom Repository-Root aus starten:
 
 ```bash
-cd PoC/backend
-pip install -r requirements.txt
+docker compose up --build
 ```
 
-### 2. Node B starten (kein Peer, empfängt nur Replikationen)
+Danach ist die Anwendung erreichbar unter:
 
-```bash
-python node.py 5002 "" "Node-B"
+```text
+http://localhost:8888
 ```
 
-### 3. Node A starten (leitet an Node B weiter)
+## Komponenten
 
-```bash
-python node.py 5001 http://localhost:5002 "Node-A"
-```
+- `backend/node.py`: Flask StatusNode mit SQLite-Persistenz, Peer-Replikation, Initial-Sync und Retry-Queue
+- `frontend/index.html`: statisches Frontend mit relativen `/api/...` Requests
+- `../loadbalancer/nginx.conf`: NGINX Loadbalancer vor den Statusnodes
+- `../docker-compose.yml`: Startet `node-a`, `node-b`, `node-c` und den Loadbalancer
 
-### 4. Frontend öffnen
+## Hinweis
 
-`PoC/frontend/index.html` direkt im Browser öffnen (Doppelklick genügt).
-
-## Demonstration
-
-1. Im Frontend einen Status eingeben und auf **Senden** klicken.
-2. Der Status erscheint sofort bei **Node A**.
-3. Durch Klick auf **Aktualisieren** bei Node B sieht man, dass der gleiche Eintrag repliziert wurde.
-
-## Endpunkte (pro Node)
-
-| Methode | Pfad               | Beschreibung                        |
-|---------|--------------------|-------------------------------------|
-| POST    | `/status`          | Neuen Status speichern (+ Replik.)  |
-| POST    | `/replicate`       | Replikations-Endpunkt (Node → Node) |
-| GET     | `/status`          | Alle Statuses abrufen               |
-| GET     | `/status/<user>`   | Status eines Users abrufen          |
-| GET     | `/health`          | Node-Status prüfen                  |
-
-## Status-Objekt
-
-```json
-{
-  "username":   "RECON-01",
-  "statustext": "Am Weg zum Einsatz",
-  "uhrzeit":    "2026-04-27T10:00:00",
-  "latitude":   48.2150,
-  "longitude":  16.3850
-}
-```
+Direkter Zugriff auf einzelne Nodes ueber `localhost:5001` oder `localhost:5002` ist im aktuellen Aufgabe-3-Stand nicht mehr vorgesehen. Die zentrale URL ist der Loadbalancer.
