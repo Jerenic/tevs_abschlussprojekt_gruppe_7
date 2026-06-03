@@ -1,74 +1,324 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-import requests
-import sys
+from __future__ import annotations
+
 import datetime
+import os
+import sqlite3
+import sys
+import threading
+from typing import Any
+
+import requests
+from flask import Flask, jsonify, request
+from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)
 
-# In-Memory Speicher: username -> Status-Objekt
-statuses = {}
-PEER_URL = None
+# In-memory read-cache: username -> latest status object, including delete tombstones.
+# The cache mirrors the SQLite table so reads stay fast while writes are persisted.
+statuses: dict[str, dict[str, Any]] = {}
+PEER_URLS: list[str] = []
 NODE_NAME = "Node"
 
+# SQLite persistence. Each node owns its own local database file (no shared DB).
+DB_PATH = ":memory:"
+_conn: sqlite3.Connection | None = None
+_db_lock = threading.Lock()
 
-@app.route('/status', methods=['POST'])
-def post_status():
-    data = request.get_json(force=True)
-    username = data.get('username', '').strip()
+_CREATE_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS statuses (
+    username   TEXT PRIMARY KEY,
+    statustext TEXT NOT NULL DEFAULT '',
+    uhrzeit    TEXT NOT NULL,
+    latitude   REAL,
+    longitude  REAL,
+    deleted    INTEGER NOT NULL DEFAULT 0,
+    originNode TEXT
+)
+"""
+
+
+def _status_from_row(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "username": row["username"],
+        "statustext": row["statustext"],
+        "uhrzeit": row["uhrzeit"],
+        "latitude": row["latitude"],
+        "longitude": row["longitude"],
+        "deleted": bool(row["deleted"]),
+        "originNode": row["originNode"],
+    }
+
+
+def _load_cache_locked() -> None:
+    """Refill the in-memory cache from the database. Caller holds _db_lock."""
+    statuses.clear()
+    assert _conn is not None
+    for row in _conn.execute("SELECT * FROM statuses"):
+        status = _status_from_row(row)
+        statuses[status["username"]] = status
+
+
+def init_db(path: str) -> None:
+    """(Re)open the SQLite database, ensure the schema and reload the cache.
+
+    Called once at startup with the configured DB_PATH and by tests to get a
+    clean, isolated store (e.g. ":memory:" or a temp file).
+    """
+    global _conn, DB_PATH
+    with _db_lock:
+        if _conn is not None:
+            _conn.close()
+        DB_PATH = path
+        parent = os.path.dirname(path)
+        if path != ":memory:" and parent:
+            os.makedirs(parent, exist_ok=True)
+        _conn = sqlite3.connect(path, check_same_thread=False)
+        _conn.row_factory = sqlite3.Row
+        _conn.execute(_CREATE_TABLE_SQL)
+        _conn.commit()
+        _load_cache_locked()
+
+
+def _persist(status: dict[str, Any]) -> None:
+    """Upsert a single status (or tombstone) into SQLite."""
+    with _db_lock:
+        if _conn is None:
+            return
+        _conn.execute(
+            "INSERT INTO statuses "
+            "(username, statustext, uhrzeit, latitude, longitude, deleted, originNode) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(username) DO UPDATE SET "
+            "statustext=excluded.statustext, uhrzeit=excluded.uhrzeit, "
+            "latitude=excluded.latitude, longitude=excluded.longitude, "
+            "deleted=excluded.deleted, originNode=excluded.originNode",
+            (
+                status["username"],
+                status["statustext"],
+                status["uhrzeit"],
+                status["latitude"],
+                status["longitude"],
+                1 if status["deleted"] else 0,
+                status["originNode"],
+            ),
+        )
+        _conn.commit()
+
+
+def now_iso() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+
+def parse_iso(value: str | None) -> datetime.datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=datetime.timezone.utc)
+        return parsed
+    except ValueError:
+        return None
+
+
+def normalize_status(data: Any, *, allow_deleted: bool = False) -> tuple[dict[str, Any] | None, str | None]:
+    if not isinstance(data, dict):
+        return None, "Payload muss ein JSON-Objekt sein"
+
+    username = str(data.get("username", "")).strip()
     if not username:
-        return jsonify({'error': 'username erforderlich'}), 400
+        return None, "username erforderlich"
 
-    if not data.get('uhrzeit'):
-        data['uhrzeit'] = datetime.datetime.now().isoformat()
+    deleted = bool(data.get("deleted", False))
+    statustext = data.get("statustext", "")
+    if not deleted and (not isinstance(statustext, str) or not statustext.strip()):
+        return None, "statustext erforderlich"
+    if deleted and not allow_deleted:
+        return None, "deleted ist fuer diesen Endpunkt nicht erlaubt"
 
-    statuses[username] = data
-    print(f"[{NODE_NAME}] Status gespeichert: {username}")
+    latitude = data.get("latitude")
+    longitude = data.get("longitude")
+    if not deleted:
+        if not isinstance(latitude, (int, float)):
+            return None, "latitude muss eine Zahl sein"
+        if not isinstance(longitude, (int, float)):
+            return None, "longitude muss eine Zahl sein"
 
-    # Weiterleitung an Peer-Node via REST
-    if PEER_URL:
+    uhrzeit = data.get("uhrzeit") or now_iso()
+    if parse_iso(uhrzeit) is None:
+        return None, "uhrzeit muss im ISO-8601 Format sein"
+
+    return {
+        "username": username,
+        "statustext": "" if deleted else statustext.strip(),
+        "uhrzeit": uhrzeit,
+        "latitude": None if deleted else float(latitude),
+        "longitude": None if deleted else float(longitude),
+        "deleted": deleted,
+        "originNode": data.get("originNode") or NODE_NAME,
+    }, None
+
+
+def should_apply(incoming: dict[str, Any]) -> bool:
+    """Last-Writer-Wins decision based on `uhrzeit`.
+
+    Newer timestamp wins. On an exact timestamp tie we break deterministically
+    by `originNode` so that every node converges to the same winner regardless
+    of the order in which replicated updates arrive.
+    """
+    existing = statuses.get(incoming["username"])
+    if not existing:
+        return True
+
+    existing_time = parse_iso(existing.get("uhrzeit"))
+    incoming_time = parse_iso(incoming.get("uhrzeit"))
+    if not existing_time or not incoming_time:
+        return True
+
+    if incoming_time > existing_time:
+        return True
+    if incoming_time < existing_time:
+        return False
+
+    return str(incoming.get("originNode", "")) >= str(existing.get("originNode", ""))
+
+
+def apply_status(status: dict[str, Any]) -> bool:
+    """Apply a status if it wins LWW, updating both cache and SQLite."""
+    if not should_apply(status):
+        return False
+    statuses[status["username"]] = status
+    _persist(status)
+    return True
+
+
+def replicate_to_peers(status: dict[str, Any]) -> list[dict[str, Any]]:
+    results = []
+    for peer_url in PEER_URLS:
         try:
-            resp = requests.post(f'{PEER_URL}/replicate', json=data, timeout=2)
-            print(f"[{NODE_NAME}] Repliziert an Peer -> HTTP {resp.status_code}")
-        except Exception as e:
-            print(f"[{NODE_NAME}] Peer nicht erreichbar: {e}")
+            response = requests.post(f"{peer_url}/replicate", json=status, timeout=2)
+            results.append({"peer": peer_url, "status": response.status_code, "ok": response.ok})
+        except requests.RequestException as exc:
+            results.append({"peer": peer_url, "status": None, "ok": False, "error": str(exc)})
+    return results
 
-    return jsonify({'message': 'Status gespeichert', 'status': data}), 201
+
+def visible_statuses() -> list[dict[str, Any]]:
+    return [status for status in statuses.values() if not status.get("deleted", False)]
 
 
-@app.route('/replicate', methods=['POST'])
+@app.after_request
+def add_node_header(response):
+    response.headers["X-Status-Node"] = NODE_NAME
+    return response
+
+
+@app.route("/status", methods=["POST"])
+def post_status():
+    status, error = normalize_status(request.get_json(silent=True), allow_deleted=False)
+    if error:
+        return jsonify({"error": error, "node": NODE_NAME}), 400
+
+    applied = apply_status(status)
+    replication = replicate_to_peers(status) if applied else []
+    print(f"[{NODE_NAME}] Status verarbeitet: {status['username']} | applied={applied}")
+
+    return jsonify({
+        "message": "Status gespeichert" if applied else "Aelteres Update ignoriert",
+        "node": NODE_NAME,
+        "status": status,
+        "applied": applied,
+        "replication": replication,
+    }), 201 if applied else 200
+
+
+@app.route("/replicate", methods=["POST"])
 def replicate():
-    """Endpunkt für Node-zu-Node Replikation."""
-    data = request.get_json(force=True)
-    username = data.get('username', '').strip()
-    if not username:
-        return jsonify({'error': 'username erforderlich'}), 400
-    statuses[username] = data
-    print(f"[{NODE_NAME}] Status repliziert von Peer: {username}")
-    return jsonify({'message': 'Repliziert'}), 200
+    status, error = normalize_status(request.get_json(silent=True), allow_deleted=True)
+    if error:
+        return jsonify({"error": error, "node": NODE_NAME}), 400
+
+    applied = apply_status(status)
+    print(f"[{NODE_NAME}] Replikation empfangen: {status['username']} | applied={applied}")
+    return jsonify({"message": "Replikation verarbeitet", "node": NODE_NAME, "applied": applied}), 200
 
 
-@app.route('/status', methods=['GET'])
+@app.route("/status", methods=["GET"])
 def get_all():
-    return jsonify(list(statuses.values())), 200
+    return jsonify(visible_statuses()), 200
 
 
-@app.route('/status/<username>', methods=['GET'])
+@app.route("/status/<username>", methods=["GET"])
 def get_one(username):
-    if username in statuses:
-        return jsonify(statuses[username]), 200
-    return jsonify({'error': 'Nicht gefunden'}), 404
+    status = statuses.get(username)
+    if not status or status.get("deleted", False):
+        return jsonify({"error": "Nicht gefunden", "node": NODE_NAME}), 404
+    return jsonify(status), 200
 
 
-@app.route('/health', methods=['GET'])
+@app.route("/status/<username>", methods=["DELETE"])
+def delete_one(username):
+    tombstone = {
+        "username": username.strip(),
+        "statustext": "",
+        "uhrzeit": now_iso(),
+        "latitude": None,
+        "longitude": None,
+        "deleted": True,
+        "originNode": NODE_NAME,
+    }
+    if not tombstone["username"]:
+        return jsonify({"error": "username erforderlich", "node": NODE_NAME}), 400
+
+    applied = apply_status(tombstone)
+    replication = replicate_to_peers(tombstone) if applied else []
+    print(f"[{NODE_NAME}] Status geloescht: {tombstone['username']} | applied={applied}")
+    return jsonify({
+        "message": "Status geloescht" if applied else "Aeltere Loeschung ignoriert",
+        "node": NODE_NAME,
+        "status": tombstone,
+        "applied": applied,
+        "replication": replication,
+    }), 200
+
+
+@app.route("/internal/snapshot", methods=["GET"])
+def snapshot():
+    return jsonify({"node": NODE_NAME, "statuses": list(statuses.values())}), 200
+
+
+@app.route("/health", methods=["GET"])
 def health():
-    return jsonify({'node': NODE_NAME, 'status': 'ok', 'entries': len(statuses)}), 200
+    return jsonify({
+        "node": NODE_NAME,
+        "status": "ok",
+        "entries": len(visible_statuses()),
+        "storedObjects": len(statuses),
+        "peers": PEER_URLS,
+    }), 200
 
 
-if __name__ == '__main__':
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 5001
-    PEER_URL = sys.argv[2] if len(sys.argv) > 2 else None
-    NODE_NAME = sys.argv[3] if len(sys.argv) > 3 else f"Node-{port}"
-    print(f"[{NODE_NAME}] Starte auf Port {port} | Peer: {PEER_URL or 'keiner'}")
-    app.run(port=port, debug=False)
+def parse_peers(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    return [peer.strip().rstrip("/") for peer in raw.split(",") if peer.strip()]
+
+
+# Ensure a usable (in-memory) database exists as soon as the module is imported,
+# so the Flask app works in tests without an explicit init_db() call.
+if _conn is None:
+    init_db(DB_PATH)
+
+
+if __name__ == "__main__":
+    # Configuration is read from environment variables first (Docker Compose) and
+    # falls back to positional CLI arguments for simple local runs.
+    port = int(os.environ.get("PORT") or (sys.argv[1] if len(sys.argv) > 1 else "5000"))
+    PEER_URLS = parse_peers(os.environ.get("PEERS") or (sys.argv[2] if len(sys.argv) > 2 else ""))
+    NODE_NAME = os.environ.get("NODE_NAME") or (sys.argv[3] if len(sys.argv) > 3 else f"Node-{port}")
+    db_path = os.environ.get("DB_PATH") or (sys.argv[4] if len(sys.argv) > 4 else f"{NODE_NAME}.db")
+
+    init_db(db_path)
+    print(f"[{NODE_NAME}] Starte auf Port {port} | Peers: {PEER_URLS or 'keine'} | DB: {db_path}")
+    app.run(host="0.0.0.0", port=port, debug=False, threaded=True)
