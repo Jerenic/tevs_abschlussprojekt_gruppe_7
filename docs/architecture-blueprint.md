@@ -4,30 +4,30 @@
 
 Das Projekt entwickelt sich vom einfachen Zwei-Node-PoC zu einem verteilten Commandcenter mit mehreren gleichwertigen Statusnodes. Ein Client arbeitet ueber eine zentrale URL und muss keine Node manuell auswaehlen. Der Loadbalancer verteilt API-Requests auf die aktiven Statusnodes. Jede Statusnode speichert Statusmeldungen lokal und persistent und repliziert Schreiboperationen an ihre konfigurierten Peers.
 
-## Aktueller Arbeitsstand fuer Aufgabe 3
+## Aktueller Arbeitsstand
 
 ```mermaid
 flowchart LR
-    U[Browser / User] --> LB[NGINX Loadbalancer<br/>localhost:8888]
-    LB -->|statisches Frontend| FE[index.html]
-    LB -->|/api/...| A[StatusNode A<br/>Flask :5000<br/>SQLite]
-    LB -->|/api/...| B[StatusNode B<br/>Flask :5000<br/>SQLite]
-    LB -->|/api/...| C[StatusNode C<br/>Flask :5000<br/>SQLite]
+    U[Browser / User] -->|HTTPS / TLS| LB[NGINX Loadbalancer<br/>localhost:8443]
+    LB -->|Frontend HTML + Leaflet| FE[index.html]
+    LB -->|/api/... HTTP| A[StatusNode A<br/>Flask :5000<br/>SQLite]
+    LB -->|/api/... HTTP| B[StatusNode B<br/>Flask :5000<br/>SQLite]
+    LB -->|/api/... HTTP| C[StatusNode C<br/>Flask :5000<br/>SQLite]
     A <-->|/replicate| B
     A <-->|/replicate| C
     B <-->|/replicate| C
 ```
 
-Der Browser ruft nur den Loadbalancer auf. Das Frontend wird direkt vom Loadbalancer ausgeliefert und spricht ausschliesslich relative `/api/...`-Pfade an. NGINX verteilt die API-Requests per Round-Robin auf `node-a`, `node-b` und `node-c`. Die Statusnodes sind nicht am Host exposed, sondern nur im Docker-Netzwerk erreichbar.
+Der Browser ruft nur den Loadbalancer auf, und zwar ausschliesslich ueber HTTPS (TLS-Terminierung am Loadbalancer). Das Frontend wird direkt vom Loadbalancer ausgeliefert und spricht ausschliesslich relative `/api/...`-Pfade an. NGINX verteilt die API-Requests per Round-Robin auf `node-a`, `node-b` und `node-c`. Die Statusnodes sind nicht am Host exposed, sondern nur im internen Docker-Netzwerk erreichbar.
 
 ## Komponenten
 
 | Komponente | Technologie | Aufgabe |
 |---|---|---|
-| Loadbalancer | NGINX | Zentrale URL, statisches Frontend, Proxy und Failover auf Backend-Nodes |
+| Loadbalancer | NGINX | Zentrale HTTPS-URL, TLS-Terminierung, Frontend-Auslieferung, Proxy und Failover auf Backend-Nodes |
 | StatusNode A/B/C | Python + Flask (`backend/status_node/`) | CRUD-API, SQLite-Persistenz, Peer-Replikation, Bootstrap, Retry |
 | Persistenz | SQLite (pro Node) | Lokaler, dauerhafter Speicher je Node, kein Shared-DB |
-| Frontend | HTML + JavaScript (`frontend/index.html`) | Status erfassen, Feed anzeigen, Delete ausloesen (Demo) |
+| Frontend | HTML + JavaScript + Leaflet (`frontend/index.html`) | Status erfassen/aendern/loeschen, Feed anzeigen, Kartenansicht mit Markern |
 | Docker Compose | Docker | Gemeinsames Netzwerk, Healthchecks, Volumes, Service-Start |
 
 ### Backend-Module (`backend/status_node/`)
@@ -47,10 +47,10 @@ Die StatusNode ist in fachliche Module aufgeteilt, damit Replikation, Persistenz
 
 | Weg | Protokoll | Zweck |
 |---|---|---|
-| Browser -> Loadbalancer | HTTP | Single Point of Access |
-| Loadbalancer -> StatusNode | HTTP/REST | Verteilung von API-Requests, Failover |
-| StatusNode -> StatusNode | HTTP/REST | Push-Replikation nach Schreiboperationen |
-| StatusNode -> StatusNode | HTTP/REST | Snapshot-Abruf beim Initial-Sync (`/internal/snapshot`) |
+| Browser -> Loadbalancer | HTTPS/TLS | Single Point of Access, verschluesselt |
+| Loadbalancer -> StatusNode | HTTP/REST (internes Docker-Netz) | Verteilung von API-Requests, Failover |
+| StatusNode -> StatusNode | HTTP/REST (internes Docker-Netz) | Push-Replikation nach Schreiboperationen |
+| StatusNode -> StatusNode | HTTP/REST (internes Docker-Netz) | Snapshot-Abruf beim Initial-Sync (`/internal/snapshot`) |
 
 ## Statusmodell
 
@@ -93,14 +93,22 @@ Beim Start befindet sich eine Node in einer Grace Period:
 
 `/replicate`, `/internal/snapshot` und `/health` bleiben waehrend der Grace Period erreichbar, damit Peers weiterarbeiten koennen.
 
+## Sicherheit / Transportverschluesselung
+
+Der Loadbalancer terminiert TLS und ist nur ueber HTTPS erreichbar (ein einziger
+HTTPS-Listener, kein HTTP). Damit laufen Frontend <-> Loadbalancer und alle
+REST-Schnittstellen verschluesselt. Verwendet wird ein selbstsigniertes
+Zertifikat (`loadbalancer/certs/`, laut Angabe erlaubt). Die Statusnodes sind am
+Host nicht exposed; ihre Replikation laeuft im internen, isolierten
+Docker-Netzwerk und ist von aussen nicht erreichbar.
+
 ## Fehlertoleranz
 
 - Faellt eine Node aus, leitet NGINX den Traffic auf die verbleibenden Nodes (Failover ohne URL-Wechsel).
 - Schlaegt die Peer-Replikation fehl, bleibt der Client-Request erfolgreich; das Update wandert in eine Retry-Queue und wird durch einen Hintergrund-Worker nachgeliefert.
 - Eine neu gestartete oder zuvor ausgefallene Node holt sich den aktuellen Stand ueber den Initial-Sync.
 
-## Noch offen fuer das finale Projekt
+## Optionale Erweiterungen (kein Pflichtteil)
 
-- Finales React/Leaflet-Frontend mit Kartenansicht (eigener Arbeitspunkt des Teams).
-- TLS am Loadbalancer und optional zwischen den Nodes (Bonus laut Aufgabe 3).
-- Optional hochverfuegbarer Loadbalancer (Aktiv/Passiv), um den letzten SPoF zu eliminieren.
+- Hochverfuegbarer Loadbalancer (Aktiv/Passiv), um den letzten SPoF zu eliminieren.
+- TLS auch fuer die Node-zu-Node-Replikation (aktuell internes, isoliertes Docker-Netz).

@@ -34,12 +34,12 @@ Abgedeckte Bereiche in `tests/test_status_node.py`:
 docker compose up --build
 ```
 
-Erwartung: `node-a`, `node-b`, `node-c` und `loadbalancer` starten ohne Fehler. Die Anwendung ist unter `http://localhost:8888` erreichbar.
+Erwartung: `node-a`, `node-b`, `node-c` und `loadbalancer` starten ohne Fehler. Die Anwendung ist unter `https://localhost:8443` erreichbar (selbstsigniertes Zertifikat, daher bei `curl` das Flag `-k`).
 
 ### 2. Loadbalancer-Health pruefen
 
 ```bash
-curl http://localhost:8888/lb-health
+curl -k https://localhost:8443/lb-health
 ```
 
 Erwartung: Antwort ist `ok`.
@@ -47,7 +47,7 @@ Erwartung: Antwort ist `ok`.
 ### 3. Status ueber zentrale API anlegen
 
 ```bash
-curl -X POST http://localhost:8888/api/status ^
+curl -k -X POST https://localhost:8443/api/status ^
   -H "Content-Type: application/json" ^
   -d "{\"username\":\"RECON-01\",\"statustext\":\"Am Weg zum Einsatz\",\"latitude\":48.215,\"longitude\":16.385}"
 ```
@@ -57,7 +57,7 @@ Erwartung: HTTP 201 und JSON-Antwort mit `node`, `status` und `replication`.
 ### 4. Status ueber zentrale API abrufen
 
 ```bash
-curl http://localhost:8888/api/status
+curl -k https://localhost:8443/api/status
 ```
 
 Erwartung: Der vorher angelegte Status ist im Feed enthalten. Bei mehrfacher Ausfuehrung kann die Antwort von unterschiedlichen Nodes kommen (Header `X-Status-Node`).
@@ -66,7 +66,7 @@ Erwartung: Der vorher angelegte Status ist im Feed enthalten. Bei mehrfacher Aus
 
 ```bash
 docker compose stop node-a
-curl http://localhost:8888/api/status
+curl -k https://localhost:8443/api/status
 ```
 
 Erwartung: Die URL bleibt gleich und der Request wird von einer verbleibenden Node beantwortet.
@@ -75,7 +75,7 @@ Erwartung: Die URL bleibt gleich und der Request wird von einer verbleibenden No
 
 ```bash
 docker compose start node-a
-curl http://localhost:8888/api/status
+curl -k https://localhost:8443/api/status
 ```
 
 Erwartung: Node-A laedt waehrend der Grace Period den aktuellen Stand von den Peers und liefert danach dieselben Daten.
@@ -91,11 +91,20 @@ Erwartung: Nach dem Neustart enthaelt Node-B weiterhin die zuvor gespeicherten S
 ### 8. Delete wird repliziert
 
 ```bash
-curl -X DELETE http://localhost:8888/api/status/RECON-01
-curl http://localhost:8888/api/status
+curl -k -X DELETE https://localhost:8443/api/status/RECON-01
+curl -k https://localhost:8443/api/status
 ```
 
 Erwartung: Der Status wird aus dem sichtbaren Feed entfernt und bleibt auch nach Replikation und Neustart entfernt.
+
+### 9. Frontend mit Karte pruefen
+
+Browser auf `https://localhost:8443` oeffnen (Zertifikatswarnung akzeptieren).
+
+Erwartung: Die Leaflet-Karte wird angezeigt. Ein Klick auf die Karte uebernimmt
+Latitude/Longitude ins Formular. Nach dem Senden erscheint die Meldung als Marker
+auf der Karte und im Feed. Ein Klick auf einen Feed-Eintrag fokussiert den Marker
+und laedt den Eintrag zum Aendern ins Formular.
 
 ## Agentic-TDD-Hinweis
 

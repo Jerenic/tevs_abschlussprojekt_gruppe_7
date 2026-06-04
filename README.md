@@ -4,7 +4,7 @@ Verteiltes Commandcenter fuer die Lehrveranstaltung Technologien verteilter Syst
 
 ## Aktueller Stand
 
-- NGINX Loadbalancer als Single Point of Access (`http://localhost:8888`)
+- NGINX Loadbalancer als Single Point of Access ueber **HTTPS/TLS** (`https://localhost:8443`)
 - Drei gleichwertige Flask-Statusnodes (`node-a`, `node-b`, `node-c`)
 - REST-Kommunikation zwischen Frontend, Loadbalancer und Statusnodes
 - Push-Replikation zwischen den Statusnodes mit Last-Writer-Wins
@@ -12,15 +12,19 @@ Verteiltes Commandcenter fuer die Lehrveranstaltung Technologien verteilter Syst
 - Initial-Sync (Bootstrapping) mit Grace Period beim Node-Start
 - Retry-Queue fuer fehlgeschlagene Replikation
 - Delete als repliziertes Tombstone (keine Wiederauferstehung geloeschter Eintraege)
-- Statisches Demo-Frontend (das finale React/Leaflet-Frontend ist offener Arbeitspunkt)
+- Web-Frontend mit Leaflet-Kartenansicht: Status setzen/aendern/loeschen, globaler Feed, Marker fuer alle Meldungen, Koordinaten per Kartenklick
 
 ## Architektur in Kurzform
 
 ```text
-Browser  ->  NGINX Loadbalancer (:8888)  ->  node-a / node-b / node-c (Flask :5000)
-                     |                              \___ Peer-Replikation (REST) ___/
-                     '-> liefert statisches Frontend
+Browser  --HTTPS-->  NGINX Loadbalancer (:8443)  --HTTP-->  node-a / node-b / node-c (Flask :5000)
+                            |                                     \___ Peer-Replikation (REST) ___/
+                            '-> liefert das Frontend (HTML + Leaflet)
 ```
+
+Der Browser spricht den Loadbalancer ausschliesslich verschluesselt (TLS) an. Die
+Replikation zwischen den Nodes laeuft im internen, nicht nach aussen exponierten
+Docker-Netzwerk.
 
 ## Projektstruktur
 
@@ -35,20 +39,21 @@ backend/
     bootstrap.py      Snapshot-Abruf, Initial-Sync, Grace-Period-Status
   requirements.txt
 frontend/
-  index.html          statisches Demo-Frontend (nur /api/...)
+  index.html          Web-Frontend (HTML + Leaflet-Karte), spricht nur /api/...
 loadbalancer/
-  nginx.conf
+  nginx.conf          NGINX Upstream, TLS-Terminierung, Routing, Failover
+  certs/              selbstsigniertes TLS-Zertifikat (Dev)
 tests/
 docs/
 Dockerfile
 docker-compose.yml
 ```
 
-Der produktive Code liegt unter `backend/`. Der frühere `PoC/`-Ordner enthält nur noch historische Notizen und wird nicht mehr gestartet.
+Der produktive Code liegt unter `backend/`.
 
 ### Replikation
 
-Eine Node, die einen Client-Schreibzugriff (`POST`/`DELETE`) erhaelt, speichert lokal und schickt das Statusobjekt per `POST /replicate` an ihre Peers. Empfangende Nodes validieren das Update und uebernehmen es nur, wenn es gewinnt (siehe Konfliktaufloesung). Es wird keine externe Replikationsbibliothek verwendet, die Logik liegt vollstaendig in `node.py`.
+Eine Node, die einen Client-Schreibzugriff (`POST`/`DELETE`) erhaelt, speichert lokal und schickt das Statusobjekt per `POST /replicate` an ihre Peers. Empfangende Nodes validieren das Update und uebernehmen es nur, wenn es gewinnt (siehe Konfliktaufloesung). Es wird keine externe Replikationsbibliothek verwendet, die Logik liegt vollstaendig in `backend/status_node/replication.py` und `models.py`.
 
 ### Konfliktaufloesung (Last-Writer-Wins)
 
@@ -66,18 +71,28 @@ Beim Start ist eine Node in einer Grace Period (`state=bootstrapping`). Sie zieh
 
 Der Browser spricht ausschliesslich den Loadbalancer an. NGINX verteilt `/api/...`-Requests per Round-Robin auf die Nodes. Faellt eine Node aus, markiert NGINX sie als nicht verfuegbar und leitet auf die verbleibenden Nodes um (`proxy_next_upstream`, inkl. nicht-idempotenter Requests). Der Nutzer behaelt dieselbe URL. Schlaegt die Peer-Replikation kurzzeitig fehl, bleibt der Client-Request trotzdem erfolgreich und das Update wird ueber die Retry-Queue nachgeliefert.
 
+### Transportverschluesselung (TLS)
+
+Der Loadbalancer terminiert TLS und ist nur ueber HTTPS erreichbar (ein
+einzelner HTTPS-Listener, kein HTTP). Verwendet wird ein selbstsigniertes
+Zertifikat unter `loadbalancer/certs/` (Details und Neuerzeugung siehe
+`loadbalancer/certs/README.md`). Browser zeigen dafuer eine erwartbare
+Sicherheitswarnung; bei `curl` wird `-k` benoetigt. Frontend <-> Loadbalancer
+sowie alle REST-Schnittstellen laufen damit verschluesselt. Die
+Node-zu-Node-Replikation laeuft im internen, nicht exponierten Docker-Netzwerk.
+
 ## Start
 
 ```bash
 docker compose up --build
 ```
 
-Anwendung: `http://localhost:8888`
+Anwendung: `https://localhost:8443` (selbstsigniertes Zertifikat im Browser akzeptieren)
 
 Loadbalancer-Health:
 
 ```bash
-curl http://localhost:8888/lb-health
+curl -k https://localhost:8443/lb-health
 ```
 
 Der Loadbalancer-Port ist optional ueber `.env` (`LOADBALANCER_PORT`) konfigurierbar.
@@ -92,11 +107,11 @@ python -m status_node.app 5000 "" Node-A node-a.db
 
 Die Argumente sind optional: `Port`, `Peers` (kommagetrennt), `NodeName`, `DB-Pfad`. Alternativ koennen `PORT`, `PEERS`, `NODE_NAME` und `DB_PATH` als Umgebungsvariablen gesetzt werden.
 
-## Aufgabe-3-Demo
+## Demo-Ablauf
 
 1. `docker compose up --build` starten.
-2. Browser auf `http://localhost:8888` oeffnen.
-3. Status absenden und im Feed pruefen.
+2. Browser auf `https://localhost:8443` oeffnen und das selbstsignierte Zertifikat akzeptieren.
+3. Status absenden (Koordinaten per Kartenklick setzbar) und im Feed sowie als Marker auf der Karte pruefen.
 4. Anzeige "Letzte Backend-Antwort" beobachten (wechselnde Node).
 5. Eine Node stoppen: `docker compose stop node-a`.
 6. Weiter ueber dieselbe URL arbeiten - NGINX nutzt die verbleibenden Nodes.
@@ -116,18 +131,18 @@ Die Suite deckt CRUD, Validierung, Last-Writer-Wins (inkl. Tiebreak), Tombstones
 |---|---|
 | `Dockerfile` | Image fuer eine Statusnode |
 | `docker-compose.yml` | Drei Nodes plus Loadbalancer, Volumes pro Node |
-| `loadbalancer/nginx.conf` | NGINX Upstream, Routing und Failover |
+| `loadbalancer/nginx.conf` | NGINX Upstream, TLS-Terminierung, Routing und Failover |
+| `loadbalancer/certs/` | Selbstsigniertes TLS-Zertifikat (Dev) |
 | `backend/status_node/` | Flask StatusNode in Modulen (siehe unten) |
 | `backend/requirements.txt` | Python-Abhaengigkeiten der Statusnode |
-| `frontend/index.html` | Statisches Demo-Frontend (spricht nur `/api/...`) |
+| `frontend/index.html` | Web-Frontend mit Leaflet-Karte (spricht nur `/api/...`) |
 | `tests/test_status_node.py` | Unit- und Verhaltenstests |
 | `docs/architecture-blueprint.md` | Architektur-Blueprint |
 | `docs/aufgabe-3-loadbalancer.md` | Aufgabe-3-Dokumentation |
 | `docs/test-plan.md` | Test- und Akzeptanzplan |
-| `docs/frontend-konzept.md` | Konzept fuer das finale Frontend |
+| `docs/frontend-konzept.md` | Frontend-Konzept und Umsetzung |
 
-## Noch offen fuer das finale Projekt
+## Optionale Erweiterungen (kein Pflichtteil)
 
-- Finales React/Leaflet-Frontend mit Kartenansicht (eigener Arbeitspunkt)
-- TLS am Loadbalancer (Bonuspunkt laut Aufgabe 3)
-- Optional: hochverfuegbarer Loadbalancer (Aktiv/Passiv)
+- Hochverfuegbarer Loadbalancer (Aktiv/Passiv), um den letzten SPoF zu eliminieren
+- TLS auch fuer die Node-zu-Node-Replikation (aktuell internes Docker-Netz)

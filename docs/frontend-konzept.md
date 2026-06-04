@@ -1,8 +1,14 @@
 # Frontend-Konzept - Verteiltes Commandcenter
 
+> Umsetzungsstand: Das Frontend ist umgesetzt als **eine statische HTML-Datei
+> (`frontend/index.html`) mit Leaflet-Karte**. Bewusst kein React/Build-Step, um
+> die Loesung einfach und gut erklaerbar zu halten (die Karte wird ausschliesslich
+> ueber Leaflet-Library-Aufrufe gebaut). Dieser Abschnitt beschreibt Ziel,
+> Layout und Funktionsumfang dieser Umsetzung.
+
 ## Ziel
 
-Das aktuelle HTML-Frontend reicht fuer Aufgabe 3, weil dort der Loadbalancer im Vordergrund steht. Fuer das finale Projekt soll daraus aber ein richtiges Web-Frontend werden. Das Ziel ist ein Commandcenter-Interface mit Karte als Hauptansicht, einem rechten Bedienpanel und einem globalen Status-Feed. Das Frontend spricht weiterhin nur den Loadbalancer an und kennt keine einzelnen Backend-Nodes direkt.
+Das Frontend ist ein Commandcenter-Interface mit Karte als Hauptansicht, einem Bedienpanel (Formular) und einem globalen Status-Feed. Es spricht ausschliesslich den Loadbalancer ueber HTTPS an (`/api/...`) und kennt keine einzelnen Backend-Nodes direkt.
 
 ## Visuelle Richtung
 
@@ -17,14 +23,14 @@ Das Frontend soll sich konzeptionell an einem Commandcenter orientieren:
 
 Das Beispielbild ist keine 1:1 Vorlage, sondern zeigt die Richtung: Map-first Layout, rechts ein kompaktes Control Panel und darunter ein Feed mit aktuellen Meldungen.
 
-## Vorgeschlagener Tech-Stack
+## Tech-Stack (umgesetzt)
 
 | Bereich | Technologie | Grund |
 |---|---|---|
-| Frontend-App | React + Vite | Schnell, uebersichtlich, gut wartbar |
-| Karte | Leaflet | Erfuellt Kartenanforderung ohne grossen Overhead |
-| API | Fetch oder kleines API-Modul | Frontend bleibt einfach |
-| Styling | CSS Modules oder normale CSS-Datei | Kein schweres UI-Framework noetig |
+| Frontend-App | Statisches HTML + Vanilla JavaScript | Kein Build-Step, einfach auszuliefern und zu erklaeren |
+| Karte | Leaflet (per CDN) | Erfuellt Kartenanforderung ohne grossen Overhead, reine Library-Aufrufe |
+| API | `fetch` gegen `/api/...` | Frontend bleibt einfach |
+| Styling | Inline-CSS im `<style>`-Block | Kein schweres UI-Framework noetig |
 
 ## Architektur
 
@@ -65,24 +71,20 @@ Das Frontend sendet alle Requests relativ an `/api/...`. Dadurch funktioniert es
 +---------------------------------------------------------------+
 ```
 
-## Geplante Komponenten
+## Aufbau (umgesetzt)
 
 ```text
 frontend/
-  src/
-    api/
-      statusApi.ts
-    components/
-      CommandPanel.tsx
-      NodeStatus.tsx
-      StatusForm.tsx
-      StatusFeed.tsx
-      StatusMap.tsx
-      UnitTypePicker.tsx
-    App.tsx
-    main.tsx
-    styles.css
+  index.html   HTML-Struktur, CSS und JavaScript in einer Datei
+               - Formular (Username, Statustext, Lat/Lon)
+               - Leaflet-Karte mit Markern (Funktionen renderMarkers/setCoords)
+               - globaler Feed (renderStatuses)
+               - API-Aufrufe per fetch gegen /api/...
 ```
+
+Die Karte wird ueber Leaflet aufgebaut: ein `L.map`, ein OpenStreetMap-Tile-Layer
+und eine `L.layerGroup` fuer die Status-Marker. Ein Klick auf die Karte
+uebernimmt die Koordinaten ins Formular (`map.on("click", ...)`).
 
 ## Funktionsumfang
 
@@ -133,17 +135,16 @@ Das Frontend nutzt nur diese Endpunkte:
 - Nach dem Senden wird der Feed neu geladen und der Marker aktualisiert.
 - Bei Backend-Fehlern bleibt das Frontend bedienbar und zeigt eine kurze Fehlermeldung.
 
-## Umsetzungsschritte
+## Umsetzungsschritte (erledigt)
 
-1. `frontend/` als Vite React App anlegen.
-2. Leaflet installieren und Karte mit Wien als Startposition anzeigen.
-3. API-Modul fuer `/api/status` schreiben.
-4. Statusformular und Feed bauen.
-5. Marker fuer Statusmeldungen anzeigen.
-6. Klick auf Karte setzt Koordinaten.
-7. Edit/Delete im Feed umsetzen.
-8. Docker/NGINX so anpassen, dass das gebaute Frontend ausgeliefert wird.
-9. Akzeptanztests fuer API-Flows und grundlegendes Rendering ergaenzen.
+1. Leaflet per CDN eingebunden, Karte mit Wien als Startposition.
+2. API-Aufrufe per `fetch` gegen `/api/status`.
+3. Statusformular und Feed gebaut.
+4. Marker fuer alle Statusmeldungen auf der Karte.
+5. Klick auf Karte setzt Koordinaten; "Mein Standort" nutzt die Geolocation.
+6. Klick auf Feed-Eintrag fokussiert Marker und laedt den Eintrag zum Aendern.
+7. Delete-Button je Feed-Eintrag.
+8. NGINX liefert `frontend/index.html` direkt aus (kein Build-Step noetig).
 
 ## Wichtig fuer die Architektur
 
