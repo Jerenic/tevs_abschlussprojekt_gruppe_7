@@ -37,9 +37,8 @@ services:
       start_period: 10s
 
   node-b:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    # Reuses the image built by node-a (same code), so the build runs only once
+    # and the three nodes do not race to tag the same image.
     image: tevs-status-node:latest
     environment:
       NODE_NAME: "Node-B"
@@ -60,9 +59,7 @@ services:
       start_period: 10s
 
   node-c:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    # Reuses the image built by node-a (see node-b).
     image: tevs-status-node:latest
     environment:
       NODE_NAME: "Node-C"
@@ -86,9 +83,10 @@ services:
     image: nginx:1.27-alpine
     container_name: tevs-loadbalancer
     ports:
-      - "${LOADBALANCER_PORT:-8888}:80"
+      - "${LOADBALANCER_PORT:-8443}:443"
     volumes:
       - ./loadbalancer/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./loadbalancer/certs:/etc/nginx/certs:ro
       - ./frontend:/usr/share/nginx/html:ro
     depends_on:
       node-a:
