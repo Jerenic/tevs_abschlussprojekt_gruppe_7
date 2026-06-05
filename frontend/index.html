@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Verteiltes Commandcenter</title>
 
-  <!-- Leaflet (Kartenbibliothek) per CDN. Die Karte wird ausschliesslich ueber
+  <!-- Leaflet (Kartenbibliothek) per CDN. Die Karte wird ausschließlich über
        Leaflet-Aufrufe gebaut, nicht selbst gezeichnet. -->
   <link
     rel="stylesheet"
@@ -233,7 +233,7 @@
 
   <main>
     <section>
-      <h2>Status senden / aendern</h2>
+      <h2>Status senden / ändern</h2>
       <form id="status-form">
         <label>Username
           <input id="username" type="text" value="RECON-01" required />
@@ -249,7 +249,7 @@
             <input id="longitude" type="number" step="any" value="16.3850" required />
           </label>
         </div>
-        <p class="hint">Tipp: Klick auf die Karte setzt die Koordinaten. Klick auf einen Feed-Eintrag laedt ihn zum Aendern.</p>
+        <p class="hint">Tipp: Klick auf die Karte setzt die Koordinaten. Klick auf einen Feed-Eintrag lädt ihn zum Ändern.</p>
         <div class="form-actions">
           <button type="submit">An Loadbalancer senden</button>
           <button class="secondary" type="button" id="locate">Mein Standort</button>
@@ -286,7 +286,7 @@
       attribution: "&copy; OpenStreetMap",
     }).addTo(map);
 
-    // Explizite Marker-Icons, damit die Bilder auch ueber das CDN sicher laden.
+    // Explizite Marker-Icons, damit die Bilder auch über das CDN sicher laden.
     const statusIcon = L.icon({
       iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
       iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
@@ -296,9 +296,9 @@
 
     const statusMarkers = L.layerGroup().addTo(map); // Marker aller Statusmeldungen
     const markersByUser = {};                         // username -> Marker (zum Fokussieren)
-    let draftMarker = null;                            // markiert die aktuell gewaehlten Koordinaten
+    let draftMarker = null;                            // markiert die aktuell gewählten Koordinaten
 
-    // Klick auf die Karte uebernimmt die Koordinaten ins Formular.
+    // Klick auf die Karte übernimmt die Koordinaten ins Formular.
     map.on("click", (event) => {
       setCoords(event.latlng.lat, event.latlng.lng);
     });
@@ -315,7 +315,7 @@
       }
     }
 
-    // --- Formular: Status setzen / aendern ---
+    // --- Formular: Status setzen / ändern ---
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       const payload = {
@@ -337,7 +337,7 @@
           setMessage(body.error || "Fehler beim Speichern.", "err");
           return;
         }
-        setMessage(`Gespeichert ueber ${body.node}. Replikation wurde angestossen.`, "ok");
+        setMessage(`Gespeichert über ${body.node}. Replikation wurde angestoßen.`, "ok");
         await loadStatuses();
       } catch {
         setMessage("Loadbalancer oder Backend nicht erreichbar.", "err");
@@ -348,7 +348,7 @@
 
     document.getElementById("locate").addEventListener("click", () => {
       if (!navigator.geolocation) {
-        setMessage("Standortbestimmung wird vom Browser nicht unterstuetzt.", "err");
+        setMessage("Standortbestimmung wird vom Browser nicht unterstützt.", "err");
         return;
       }
       navigator.geolocation.getCurrentPosition(
@@ -380,17 +380,17 @@
         updateNode(response);
         const body = await response.json();
         if (!response.ok) {
-          setMessage(body.error || "Loeschen fehlgeschlagen.", "err");
+          setMessage(body.error || "Löschen fehlgeschlagen.", "err");
           return;
         }
-        setMessage(`Geloescht ueber ${body.node}.`, "ok");
+        setMessage(`Gelöscht über ${body.node}.`, "ok");
         await loadStatuses();
       } catch {
-        setMessage("Loeschen nicht moeglich, Backend nicht erreichbar.", "err");
+        setMessage("Löschen nicht möglich, Backend nicht erreichbar.", "err");
       }
     }
 
-    // Klick auf einen Feed-Eintrag: Karte fokussieren + Formular zum Aendern fuellen.
+    // Klick auf einen Feed-Eintrag: Karte fokussieren + Formular zum Ändern füllen.
     function selectStatus(status) {
       document.getElementById("username").value = status.username;
       document.getElementById("statustext").value = status.statustext;
@@ -411,7 +411,7 @@
         <article class="status-card" data-select="${escapeHtml(status.username)}">
           <div class="status-top">
             <div class="username">${escapeHtml(status.username)}</div>
-            <button class="danger" type="button" data-delete="${escapeHtml(status.username)}">Loeschen</button>
+            <button class="danger" type="button" data-delete="${escapeHtml(status.username)}">Löschen</button>
           </div>
           <div class="status-text">${escapeHtml(status.statustext)}</div>
           <div class="meta">
