@@ -5,8 +5,11 @@ import time
 from typing import Any
 
 import requests
+from urllib3.exceptions import InsecureRequestWarning
 
 from status_node import config
+
+requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
 
 # Replications that failed are queued here and retried by a background worker,
 # so a temporarily unreachable peer neither loses updates nor breaks the client write.
@@ -29,7 +32,12 @@ def replicate_to_peers(status: dict[str, Any]) -> list[dict[str, Any]]:
     results = []
     for peer_url in config.PEER_URLS:
         try:
-            response = requests.post(f"{peer_url}/replicate", json=status, timeout=2)
+            response = requests.post(
+                f"{peer_url}/replicate",
+                json=status,
+                timeout=2,
+                verify=config.PEER_TLS_VERIFY,
+            )
             results.append({"peer": peer_url, "status": response.status_code, "ok": response.ok})
             if not response.ok:
                 _enqueue_pending(peer_url, status)
@@ -45,7 +53,12 @@ def process_pending() -> int:
     flushed = 0
     for item in queued:
         try:
-            response = requests.post(f"{item['peer']}/replicate", json=item["status"], timeout=2)
+            response = requests.post(
+                f"{item['peer']}/replicate",
+                json=item["status"],
+                timeout=2,
+                verify=config.PEER_TLS_VERIFY,
+            )
         except requests.RequestException:
             continue
         if not response.ok:

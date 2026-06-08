@@ -20,17 +20,21 @@ services:
     image: tevs-status-node:latest
     environment:
       NODE_NAME: "Node-A"
-      PEERS: "http://node-b:5000,http://node-c:5000"
+      PEERS: "https://node-b:5000,https://node-c:5000"
       DB_PATH: "/data/status.db"
       BOOTSTRAP_TIMEOUT: "8"
+      TLS_CERT_PATH: "/etc/status-node/certs/server.crt"
+      TLS_KEY_PATH: "/etc/status-node/certs/server.key"
+      PEER_TLS_VERIFY: "false"
     volumes:
       - node-a-data:/data
+      - ./loadbalancer/certs:/etc/status-node/certs:ro
     expose:
       - "5000"
     networks:
       - tevs_net
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=2)"]
+      test: ["CMD", "python", "-c", "import ssl, urllib.request; urllib.request.urlopen('https://127.0.0.1:5000/health', context=ssl._create_unverified_context(), timeout=2)"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -42,17 +46,21 @@ services:
     image: tevs-status-node:latest
     environment:
       NODE_NAME: "Node-B"
-      PEERS: "http://node-a:5000,http://node-c:5000"
+      PEERS: "https://node-a:5000,https://node-c:5000"
       DB_PATH: "/data/status.db"
       BOOTSTRAP_TIMEOUT: "8"
+      TLS_CERT_PATH: "/etc/status-node/certs/server.crt"
+      TLS_KEY_PATH: "/etc/status-node/certs/server.key"
+      PEER_TLS_VERIFY: "false"
     volumes:
       - node-b-data:/data
+      - ./loadbalancer/certs:/etc/status-node/certs:ro
     expose:
       - "5000"
     networks:
       - tevs_net
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=2)"]
+      test: ["CMD", "python", "-c", "import ssl, urllib.request; urllib.request.urlopen('https://127.0.0.1:5000/health', context=ssl._create_unverified_context(), timeout=2)"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -63,17 +71,21 @@ services:
     image: tevs-status-node:latest
     environment:
       NODE_NAME: "Node-C"
-      PEERS: "http://node-a:5000,http://node-b:5000"
+      PEERS: "https://node-a:5000,https://node-b:5000"
       DB_PATH: "/data/status.db"
       BOOTSTRAP_TIMEOUT: "8"
+      TLS_CERT_PATH: "/etc/status-node/certs/server.crt"
+      TLS_KEY_PATH: "/etc/status-node/certs/server.key"
+      PEER_TLS_VERIFY: "false"
     volumes:
       - node-c-data:/data
+      - ./loadbalancer/certs:/etc/status-node/certs:ro
     expose:
       - "5000"
     networks:
       - tevs_net
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=2)"]
+      test: ["CMD", "python", "-c", "import ssl, urllib.request; urllib.request.urlopen('https://127.0.0.1:5000/health', context=ssl._create_unverified_context(), timeout=2)"]
       interval: 5s
       timeout: 3s
       retries: 5

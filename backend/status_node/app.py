@@ -141,7 +141,12 @@ def main() -> None:
     threading.Thread(target=bootstrap.run_bootstrap, daemon=True).start()
     threading.Thread(target=replication.retry_worker, daemon=True).start()
 
-    app.run(host="0.0.0.0", port=config.PORT, debug=False, threaded=True)
+    ssl_context = None
+    if config.TLS_CERT_PATH and config.TLS_KEY_PATH:
+        ssl_context = (config.TLS_CERT_PATH, config.TLS_KEY_PATH)
+        print(f"[{config.NODE_NAME}] Interne API startet mit TLS")
+
+    app.run(host="0.0.0.0", port=config.PORT, debug=False, threaded=True, ssl_context=ssl_context)
 
 
 if __name__ == "__main__":

@@ -10,15 +10,15 @@ Das Projekt entwickelt sich vom einfachen Zwei-Node-PoC zu einem verteilten Comm
 flowchart LR
     U[Browser / User] -->|HTTPS / TLS| LB[NGINX Loadbalancer<br/>localhost:8443]
     LB -->|Frontend HTML + Leaflet| FE[index.html]
-    LB -->|/api/... HTTP| A[StatusNode A<br/>Flask :5000<br/>SQLite]
-    LB -->|/api/... HTTP| B[StatusNode B<br/>Flask :5000<br/>SQLite]
-    LB -->|/api/... HTTP| C[StatusNode C<br/>Flask :5000<br/>SQLite]
-    A <-->|/replicate| B
-    A <-->|/replicate| C
-    B <-->|/replicate| C
+    LB -->|/api/... HTTPS| A[StatusNode A<br/>Flask :5000<br/>SQLite]
+    LB -->|/api/... HTTPS| B[StatusNode B<br/>Flask :5000<br/>SQLite]
+    LB -->|/api/... HTTPS| C[StatusNode C<br/>Flask :5000<br/>SQLite]
+    A <-->|HTTPS /replicate| B
+    A <-->|HTTPS /replicate| C
+    B <-->|HTTPS /replicate| C
 ```
 
-Der Browser ruft nur den Loadbalancer auf, und zwar ausschliesslich ueber HTTPS (TLS-Terminierung am Loadbalancer). Das Frontend wird direkt vom Loadbalancer ausgeliefert und spricht ausschliesslich relative `/api/...`-Pfade an. NGINX verteilt die API-Requests per Round-Robin auf `node-a`, `node-b` und `node-c`. Die Statusnodes sind nicht am Host exposed, sondern nur im internen Docker-Netzwerk erreichbar.
+Der Browser ruft nur den Loadbalancer auf, und zwar ausschliesslich ueber HTTPS (TLS-Terminierung am Loadbalancer). Das Frontend wird direkt vom Loadbalancer ausgeliefert und spricht ausschliesslich relative `/api/...`-Pfade an. NGINX verteilt die API-Requests per Round-Robin ueber HTTPS auf `node-a`, `node-b` und `node-c`. Die Statusnodes sind nicht am Host exposed, sondern nur im internen Docker-Netzwerk erreichbar.
 
 ## Komponenten
 
@@ -48,9 +48,9 @@ Die StatusNode ist in fachliche Module aufgeteilt, damit Replikation, Persistenz
 | Weg | Protokoll | Zweck |
 |---|---|---|
 | Browser -> Loadbalancer | HTTPS/TLS | Single Point of Access, verschluesselt |
-| Loadbalancer -> StatusNode | HTTP/REST (internes Docker-Netz) | Verteilung von API-Requests, Failover |
-| StatusNode -> StatusNode | HTTP/REST (internes Docker-Netz) | Push-Replikation nach Schreiboperationen |
-| StatusNode -> StatusNode | HTTP/REST (internes Docker-Netz) | Snapshot-Abruf beim Initial-Sync (`/internal/snapshot`) |
+| Loadbalancer -> StatusNode | HTTPS/REST (internes Docker-Netz) | Verteilung von API-Requests, Failover |
+| StatusNode -> StatusNode | HTTPS/REST (internes Docker-Netz) | Push-Replikation nach Schreiboperationen |
+| StatusNode -> StatusNode | HTTPS/REST (internes Docker-Netz) | Snapshot-Abruf beim Initial-Sync (`/internal/snapshot`) |
 
 ## Statusmodell
 
@@ -95,12 +95,14 @@ Beim Start befindet sich eine Node in einer Grace Period:
 
 ## Sicherheit / Transportverschluesselung
 
-Der Loadbalancer terminiert TLS und ist nur ueber HTTPS erreichbar (ein einziger
-HTTPS-Listener, kein HTTP). Damit laufen Frontend <-> Loadbalancer und alle
-REST-Schnittstellen verschluesselt. Verwendet wird ein selbstsigniertes
-Zertifikat (`loadbalancer/certs/`, laut Angabe erlaubt). Die Statusnodes sind am
-Host nicht exposed; ihre Replikation laeuft im internen, isolierten
-Docker-Netzwerk und ist von aussen nicht erreichbar.
+Der Loadbalancer und die Statusnodes nutzen HTTPS/TLS mit selbstsigniertem
+Zertifikat (`loadbalancer/certs/`, laut Angabe erlaubt). Damit laufen Frontend
+<-> Loadbalancer, Loadbalancer <-> StatusNode und StatusNode <-> StatusNode
+verschluesselt. Die Statusnodes sind am Host nicht exposed; ihre Replikation
+laeuft im internen, isolierten Docker-Netzwerk und ist von aussen nicht
+erreichbar. Fuer die internen Self-Signed-Verbindungen ist die
+Zertifikatspruefung in Docker Compose deaktiviert (`PEER_TLS_VERIFY=false`,
+`proxy_ssl_verify off`), nicht aber die Transportverschluesselung.
 
 ## Fehlertoleranz
 
@@ -111,4 +113,4 @@ Docker-Netzwerk und ist von aussen nicht erreichbar.
 ## Optionale Erweiterungen (kein Pflichtteil)
 
 - Hochverfuegbarer Loadbalancer (Aktiv/Passiv), um den letzten SPoF zu eliminieren.
-- TLS auch fuer die Node-zu-Node-Replikation (aktuell internes, isoliertes Docker-Netz).
+- Strengere interne Zertifikatspruefung mit eigener CA und SAN-Zertifikaten fuer `node-a`, `node-b`, `node-c`.

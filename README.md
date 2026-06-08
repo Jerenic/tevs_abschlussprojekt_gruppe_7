@@ -6,7 +6,7 @@ Verteiltes Commandcenter fuer die Lehrveranstaltung Technologien verteilter Syst
 
 - NGINX Loadbalancer als Single Point of Access ueber **HTTPS/TLS** (`https://localhost:8443`)
 - Drei gleichwertige Flask-Statusnodes (`node-a`, `node-b`, `node-c`)
-- REST-Kommunikation zwischen Frontend, Loadbalancer und Statusnodes
+- REST-Kommunikation zwischen Frontend, Loadbalancer und Statusnodes ueber HTTPS/TLS
 - Push-Replikation zwischen den Statusnodes mit Last-Writer-Wins
 - SQLite-Persistenz pro Node (eigene DB-Datei je Node, kein Shared-DB)
 - Initial-Sync (Bootstrapping) mit Grace Period beim Node-Start
@@ -17,14 +17,14 @@ Verteiltes Commandcenter fuer die Lehrveranstaltung Technologien verteilter Syst
 ## Architektur in Kurzform
 
 ```text
-Browser  --HTTPS-->  NGINX Loadbalancer (:8443)  --HTTP-->  node-a / node-b / node-c (Flask :5000)
-                            |                                     \___ Peer-Replikation (REST) ___/
+Browser  --HTTPS-->  NGINX Loadbalancer (:8443)  --HTTPS-->  node-a / node-b / node-c (Flask :5000)
+                            |                                      \___ Peer-Replikation (HTTPS/REST) ___/
                             '-> liefert das Frontend (HTML + Leaflet)
 ```
 
-Der Browser spricht den Loadbalancer ausschliesslich verschluesselt (TLS) an. Die
-Replikation zwischen den Nodes laeuft im internen, nicht nach aussen exponierten
-Docker-Netzwerk.
+Der Browser spricht den Loadbalancer ausschliesslich verschluesselt (TLS) an.
+Auch Loadbalancer -> Node und Node -> Node laufen ueber HTTPS/TLS im internen,
+nicht nach aussen exponierten Docker-Netzwerk.
 
 ## Projektstruktur
 
@@ -73,13 +73,14 @@ Der Browser spricht ausschliesslich den Loadbalancer an. NGINX verteilt `/api/..
 
 ### Transportverschluesselung (TLS)
 
-Der Loadbalancer terminiert TLS und ist nur ueber HTTPS erreichbar (ein
-einzelner HTTPS-Listener, kein HTTP). Verwendet wird ein selbstsigniertes
-Zertifikat unter `loadbalancer/certs/` (Details und Neuerzeugung siehe
+Der Loadbalancer und die Statusnodes nutzen HTTPS mit selbstsigniertem
+Zertifikat aus `loadbalancer/certs/` (Details und Neuerzeugung siehe
 `loadbalancer/certs/README.md`). Browser zeigen dafuer eine erwartbare
-Sicherheitswarnung; bei `curl` wird `-k` benoetigt. Frontend <-> Loadbalancer
-sowie alle REST-Schnittstellen laufen damit verschluesselt. Die
-Node-zu-Node-Replikation laeuft im internen, nicht exponierten Docker-Netzwerk.
+Sicherheitswarnung; bei `curl` wird `-k` benoetigt. Frontend <-> Loadbalancer,
+Loadbalancer <-> StatusNode und StatusNode <-> StatusNode laufen damit
+verschluesselt. Im Compose-Setup ist die Zertifikatspruefung fuer interne
+Self-Signed-Verbindungen deaktiviert (`PEER_TLS_VERIFY=false`,
+`proxy_ssl_verify off`), die Transportverschluesselung bleibt aktiv.
 
 ## Start
 
@@ -138,6 +139,7 @@ Die Suite deckt CRUD, Validierung, Last-Writer-Wins (inkl. Tiebreak), Tombstones
 | `frontend/index.html` | Web-Frontend mit Leaflet-Karte (spricht nur `/api/...`) |
 | `tests/test_status_node.py` | Unit- und Verhaltenstests |
 | `docs/architecture-blueprint.md` | Architektur-Blueprint |
+| `docs/architecture-summary.pdf` | Kurze Architektur-Beschreibung als PDF fuer die Abgabe |
 | `docs/aufgabe-3-loadbalancer.md` | Aufgabe-3-Dokumentation |
 | `docs/test-plan.md` | Test- und Akzeptanzplan |
 | `docs/frontend-konzept.md` | Frontend-Konzept und Umsetzung |
@@ -145,4 +147,4 @@ Die Suite deckt CRUD, Validierung, Last-Writer-Wins (inkl. Tiebreak), Tombstones
 ## Optionale Erweiterungen (kein Pflichtteil)
 
 - Hochverfuegbarer Loadbalancer (Aktiv/Passiv), um den letzten SPoF zu eliminieren
-- TLS auch fuer die Node-zu-Node-Replikation (aktuell internes Docker-Netz)
+- Optional haertere Zertifikatspruefung fuer interne TLS-Verbindungen mit eigener CA/SAN-Zertifikaten

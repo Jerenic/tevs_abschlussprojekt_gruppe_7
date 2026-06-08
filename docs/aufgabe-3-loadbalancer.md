@@ -11,11 +11,12 @@ Als Loadbalancer wird NGINX verwendet. NGINX ist passend, weil es leicht in Dock
 ## Konfiguration im Ueberblick
 
 - `upstream status_nodes` buendelt `node-a`, `node-b`, `node-c` (jeweils Port 5000). `max_fails=1` und `fail_timeout=5s` sorgen fuer schnelles Failover.
-- `location /api/` proxyt auf den Upstream und entfernt das `/api`-Praefix (`/api/status` -> `/status`).
+- `location /api/` proxyt per HTTPS auf den Upstream und entfernt das `/api`-Praefix (`/api/status` -> `/status`).
 - `proxy_next_upstream error timeout http_500 http_502 http_503 http_504 non_idempotent` leitet auch `POST`/`DELETE` auf eine andere Node um, wenn die erste Node ausfaellt oder noch im Bootstrap (HTTP 503) ist. `proxy_next_upstream_tries 3` begrenzt die Versuche.
 - `location = /lb-health` liefert einen einfachen `ok`-Healthcheck des Loadbalancers.
 - `location /` liefert das Frontend (`index.html` inkl. Leaflet-Karte).
 - Der Loadbalancer hat ausschliesslich einen HTTPS-Listener (`listen 443 ssl`) mit selbstsigniertem Zertifikat aus `loadbalancer/certs/`; der Zugriff erfolgt also nur verschluesselt.
+- Die Statusnodes starten ebenfalls mit TLS-Zertifikat. Peer-Replikation, Bootstrap-Snapshots und Loadbalancer-Upstream laufen intern ueber HTTPS.
 
 Das erneute Senden eines Schreibrequests an eine andere Node ist sicher, weil die Nodes Updates per Last-Writer-Wins idempotent uebernehmen.
 
@@ -57,6 +58,7 @@ LOADBALANCER_PORT=8443
 | Traffic-Verteilung | NGINX Upstream `node-a`, `node-b`, `node-c` (Round-Robin) |
 | Ausfallsicherheit einzelner Nodes | `proxy_next_upstream` leitet auf verbleibende Nodes um, inkl. Schreibrequests |
 | Mehrere Statusserver-Nodes | Drei gleichartige Flask-Nodes mit eigener SQLite-Persistenz |
+| TLS/SSL Bonus | HTTPS am Loadbalancer und auf den internen Node-Verbindungen |
 
 ## Zusammenspiel mit der Backend-Fehlertoleranz
 
@@ -64,7 +66,8 @@ Der Loadbalancer deckt den Ausfall auf der Zugriffsebene ab. Auf Datenebene erga
 
 ## Grenzen des aktuellen Arbeitsstands
 
-TLS ist am Loadbalancer aktiv (HTTPS mit selbstsigniertem Zertifikat). Der
-Loadbalancer selbst ist noch nicht redundant ausgelegt; das ist laut Aufgabe
-fuer den Pflichtteil erlaubt. Ein hochverfuegbares Aktiv/Passiv-Setup mit
-virtueller IP waere der naechste optionale Schritt.
+TLS ist am Loadbalancer und auf den Statusnodes aktiv (HTTPS mit
+selbstsigniertem Zertifikat). Der Loadbalancer selbst ist noch nicht redundant
+ausgelegt; das ist laut Aufgabe fuer den Pflichtteil erlaubt. Ein
+hochverfuegbares Aktiv/Passiv-Setup mit virtueller IP waere der naechste
+optionale Schritt.

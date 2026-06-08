@@ -2,7 +2,7 @@
 
 ## Ziel
 
-Die Tests zeigen, dass der Loadbalancer sinnvoll vor den Statusnodes arbeitet und dass die Nodes Replikation, Persistenz, Konfliktaufloesung und Fehlertoleranz korrekt umsetzen. Der wichtigste Punkt fuer Aufgabe 3 ist, dass der User nur eine URL braucht und Node-Ausfaelle nicht manuell behandeln muss.
+Die Tests zeigen, dass der Loadbalancer sinnvoll vor den Statusnodes arbeitet und dass die Nodes Replikation, Persistenz, TLS-Transportverschluesselung, Konfliktaufloesung und Fehlertoleranz korrekt umsetzen. Der wichtigste Punkt fuer Aufgabe 3 ist, dass der User nur eine URL braucht und Node-Ausfaelle nicht manuell behandeln muss.
 
 ## Automatisierte Tests
 
@@ -25,6 +25,12 @@ Abgedeckte Bereiche in `tests/test_status_node.py`:
 | Bootstrapping | Peer-Snapshot wird per LWW gemerged, juengerer lokaler Stand wird nicht ueberschrieben |
 | Grace Period | Client-Endpunkte liefern waehrend des Bootstraps HTTP 503, `/health` und `/replicate` bleiben erreichbar |
 | Retry-Queue | fehlgeschlagene Replikation wird eingereiht, bei Erreichbarkeit nachgeliefert, Dedup behaelt das neueste Update |
+
+Transportverschluesselung wird zusaetzlich ueber die Docker-Konfiguration
+geprueft: Frontend -> Loadbalancer, Loadbalancer -> StatusNode und StatusNode
+-> StatusNode nutzen HTTPS. Wegen selbstsignierter Dev-Zertifikate wird bei
+internen Verbindungen die Zertifikatspruefung deaktiviert, nicht die
+Verschluesselung.
 
 ## Manuelle Akzeptanztests (mit Docker)
 

@@ -4,8 +4,11 @@ import time
 from typing import Any
 
 import requests
+from urllib3.exceptions import InsecureRequestWarning
 
 from status_node import config, models, storage
+
+requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
 
 # Grace-period state. A freshly started node first pulls peer snapshots before
 # it answers client traffic. Defaults to ready so imports/tests are not gated.
@@ -15,7 +18,11 @@ NODE_STATE = "ready"
 
 def fetch_snapshot(peer_url: str, timeout: float = 3.0) -> list[dict[str, Any]] | None:
     try:
-        response = requests.get(f"{peer_url}/internal/snapshot", timeout=timeout)
+        response = requests.get(
+            f"{peer_url}/internal/snapshot",
+            timeout=timeout,
+            verify=config.PEER_TLS_VERIFY,
+        )
         if not response.ok:
             return None
         data = response.json()
