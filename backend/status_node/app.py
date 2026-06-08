@@ -41,7 +41,7 @@ def post_status():
     print(f"[{config.NODE_NAME}] Status verarbeitet: {status['username']} | applied={applied}")
 
     return jsonify({
-        "message": "Status gespeichert" if applied else "Aelteres Update ignoriert",
+        "message": "Status gespeichert" if applied else "älteres Update ignoriert",
         "node": config.NODE_NAME,
         "status": status,
         "applied": applied,
@@ -99,10 +99,10 @@ def delete_one(username):
     }
     applied = storage.apply_status(tombstone)
     replication_result = replication.replicate_to_peers(tombstone) if applied else []
-    print(f"[{config.NODE_NAME}] Status geloescht: {tombstone['username']} | applied={applied}")
+    print(f"[{config.NODE_NAME}] Status gelöscht: {tombstone['username']} | applied={applied}")
 
     return jsonify({
-        "message": "Status geloescht" if applied else "Aeltere Loeschung ignoriert",
+        "message": "Status gelöscht" if applied else "ältere Löschung ignoriert",
         "node": config.NODE_NAME,
         "status": tombstone,
         "applied": applied,

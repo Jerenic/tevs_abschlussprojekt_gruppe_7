@@ -43,7 +43,7 @@ def normalize_status(
     if not deleted and (not isinstance(statustext, str) or not statustext.strip()):
         return None, "statustext erforderlich"
     if deleted and not allow_deleted:
-        return None, "deleted ist fuer diesen Endpunkt nicht erlaubt"
+        return None, "deleted ist für diesen Endpunkt nicht erlaubt"
 
     latitude = data.get("latitude")
     longitude = data.get("longitude")

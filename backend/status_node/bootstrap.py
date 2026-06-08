@@ -73,7 +73,7 @@ def run_bootstrap() -> None:
     NODE_STATE = "bootstrapping"
     try:
         count = bootstrap_from_peers()
-        print(f"[{config.NODE_NAME}] Bootstrap abgeschlossen: {count} Status uebernommen")
+        print(f"[{config.NODE_NAME}] Bootstrap abgeschlossen: {count} Status übernommen")
     finally:
         READY = True
         NODE_STATE = "ready"
