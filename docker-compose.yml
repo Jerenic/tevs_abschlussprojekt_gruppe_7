@@ -2,6 +2,7 @@ name: tevs-status-commandcenter
 
 # Three equal Flask status nodes behind a single NGINX loadbalancer.
 # Each node has its own SQLite file on a private named volume (no shared DB).
+# TLS terminates at the loadbalancer; internal traffic uses plain HTTP.
 
 networks:
   tevs_net:
@@ -20,72 +21,57 @@ services:
     image: tevs-status-node:latest
     environment:
       NODE_NAME: "Node-A"
-      PEERS: "https://node-b:5000,https://node-c:5000"
+      PEERS: "http://node-b:5000,http://node-c:5000"
       DB_PATH: "/data/status.db"
       BOOTSTRAP_TIMEOUT: "8"
-      TLS_CERT_PATH: "/etc/status-node/certs/server.crt"
-      TLS_KEY_PATH: "/etc/status-node/certs/server.key"
-      PEER_TLS_VERIFY: "false"
     volumes:
       - node-a-data:/data
-      - ./loadbalancer/certs:/etc/status-node/certs:ro
     expose:
       - "5000"
     networks:
       - tevs_net
     healthcheck:
-      test: ["CMD", "python", "-c", "import ssl, urllib.request; urllib.request.urlopen('https://127.0.0.1:5000/health', context=ssl._create_unverified_context(), timeout=2)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=2)"]
       interval: 5s
       timeout: 3s
       retries: 5
       start_period: 10s
 
   node-b:
-    # Reuses the image built by node-a (same code), so the build runs only once
-    # and the three nodes do not race to tag the same image.
     image: tevs-status-node:latest
     environment:
       NODE_NAME: "Node-B"
-      PEERS: "https://node-a:5000,https://node-c:5000"
+      PEERS: "http://node-a:5000,http://node-c:5000"
       DB_PATH: "/data/status.db"
       BOOTSTRAP_TIMEOUT: "8"
-      TLS_CERT_PATH: "/etc/status-node/certs/server.crt"
-      TLS_KEY_PATH: "/etc/status-node/certs/server.key"
-      PEER_TLS_VERIFY: "false"
     volumes:
       - node-b-data:/data
-      - ./loadbalancer/certs:/etc/status-node/certs:ro
     expose:
       - "5000"
     networks:
       - tevs_net
     healthcheck:
-      test: ["CMD", "python", "-c", "import ssl, urllib.request; urllib.request.urlopen('https://127.0.0.1:5000/health', context=ssl._create_unverified_context(), timeout=2)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=2)"]
       interval: 5s
       timeout: 3s
       retries: 5
       start_period: 10s
 
   node-c:
-    # Reuses the image built by node-a (see node-b).
     image: tevs-status-node:latest
     environment:
       NODE_NAME: "Node-C"
-      PEERS: "https://node-a:5000,https://node-b:5000"
+      PEERS: "http://node-a:5000,http://node-b:5000"
       DB_PATH: "/data/status.db"
       BOOTSTRAP_TIMEOUT: "8"
-      TLS_CERT_PATH: "/etc/status-node/certs/server.crt"
-      TLS_KEY_PATH: "/etc/status-node/certs/server.key"
-      PEER_TLS_VERIFY: "false"
     volumes:
       - node-c-data:/data
-      - ./loadbalancer/certs:/etc/status-node/certs:ro
     expose:
       - "5000"
     networks:
       - tevs_net
     healthcheck:
-      test: ["CMD", "python", "-c", "import ssl, urllib.request; urllib.request.urlopen('https://127.0.0.1:5000/health', context=ssl._create_unverified_context(), timeout=2)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=2)"]
       interval: 5s
       timeout: 3s
       retries: 5

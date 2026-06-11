@@ -6,7 +6,7 @@ Dieses Repo enthält unser verteiltes Commandcenter für TEVS. Nutzer arbeiten �
 
 - Zentrale URL über NGINX und HTTPS/TLS (`https://localhost:8443`)
 - Drei Flask-Statusnodes: `node-a`, `node-b`, `node-c`
-- HTTPS/REST zwischen Browser, Loadbalancer und Nodes
+- HTTPS zum Loadbalancer; intern HTTP/REST im Docker-Netz
 - Push-Replikation mit Last-Writer-Wins
 - Eigene SQLite-Datei pro Node, keine gemeinsame Datenbank
 - Initial-Sync beim Node-Start
@@ -17,14 +17,14 @@ Dieses Repo enthält unser verteiltes Commandcenter für TEVS. Nutzer arbeiten �
 ## Architektur in Kurzform
 
 ```text
-Browser  --HTTPS-->  NGINX Loadbalancer (:8443)  --HTTPS-->  node-a / node-b / node-c (Flask :5000)
-                            |                                      \___ Peer-Replikation (HTTPS/REST) ___/
+Browser  --HTTPS-->  NGINX Loadbalancer (:8443)  --HTTP-->  node-a / node-b / node-c (Flask :5000)
+                            |                                      \___ Peer-Replikation (HTTP/REST) ___/
                             '-> liefert das Frontend (HTML + Leaflet)
 ```
 
 Der Browser spricht den Loadbalancer ausschließlich verschlüsselt (TLS) an.
-Auch Loadbalancer -> Node und Node -> Node laufen über HTTPS/TLS im internen,
-nicht nach außen exponierten Docker-Netzwerk.
+TLS wird am Loadbalancer terminiert. Loadbalancer → Node und Node → Node
+laufen im internen, nicht nach außen exponierten Docker-Netz per HTTP/REST.
 
 ## Projektstruktur
 
@@ -73,14 +73,12 @@ Der Browser spricht ausschließlich den Loadbalancer an. NGINX verteilt `/api/..
 
 ### Transportverschlüsselung (TLS)
 
-Der Loadbalancer und die Statusnodes nutzen HTTPS mit selbstsigniertem
-Zertifikat aus `loadbalancer/certs/` (Details und Neuerzeugung siehe
-`loadbalancer/certs/README.md`). Browser zeigen dafür eine erwartbare
-Sicherheitswarnung; bei `curl` wird `-k` benötigt. Frontend <-> Loadbalancer,
-Loadbalancer <-> StatusNode und StatusNode <-> StatusNode laufen damit
-verschlüsselt. Im Compose-Setup ist die Zertifikatsprüfung für interne
-Self-Signed-Verbindungen deaktiviert (`PEER_TLS_VERIFY=false`,
-`proxy_ssl_verify off`), die Transportverschlüsselung bleibt aktiv.
+Der Loadbalancer terminiert HTTPS mit selbstsigniertem Zertifikat aus
+`loadbalancer/certs/` (Details siehe `loadbalancer/certs/README.md`).
+Browser zeigen dafür eine erwartbare Sicherheitswarnung; bei `curl` wird `-k`
+benötigt. Der verschlüsselte Pfad endet am Loadbalancer: Frontend ↔ LB läuft
+über TLS, LB ↔ Node und Node ↔ Node im internen Docker-Netz über HTTP/REST.
+Die Nodes sind am Host nicht exposed.
 
 ## Start
 
@@ -147,4 +145,4 @@ Die Suite deckt CRUD, Validierung, Last-Writer-Wins (inkl. Tiebreak), Tombstones
 ## Optionale Erweiterungen (kein Pflichtteil)
 
 - Hochverfügbarer Loadbalancer (Aktiv/Passiv), um den letzten SPoF zu eliminieren
-- Optional härtere Zertifikatsprüfung für interne TLS-Verbindungen mit eigener CA/SAN-Zertifikaten
+- Optional TLS auch zwischen den Nodes (mTLS) mit eigener CA/SAN-Zertifikaten
